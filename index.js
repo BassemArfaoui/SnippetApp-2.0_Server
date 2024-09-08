@@ -38,10 +38,50 @@ app.get('/', async (req,res)=>{
   res.send('hello')
 });
 
-app.get('/posts', async (req, res)=>{
-  const result = await db.query("SELECT * FROM post order by id asc");
-  res.json(result.rows)
+
+
+app.get('/posts', async (req, res) => {
+  const limit = parseInt(req.query.limit) || 10;
+
+  try {
+    // Fetch random posts with limit
+    const result = await db.query(`
+      SELECT * FROM post 
+      ORDER BY RANDOM() 
+      LIMIT $1
+    `, [limit]);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred' });
+  }
 });
+
+
+app.get('/notifications/:id', async (req, res) => {
+  const userId = parseInt(req.params.id);
+
+  try {
+    const result = await db.query(
+      `
+      SELECT n.id, n.from_id, n.to_id, n.type, n.post_id, n.time, p.title AS post_title
+      FROM notification n
+      LEFT JOIN post p ON n.post_id = p.id
+      WHERE n.to_id = $1
+      ORDER BY n.time DESC
+      `,
+      [userId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 
 
 
