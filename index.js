@@ -60,26 +60,27 @@ app.get('/posts', async (req, res) => {
 
 
 app.get('/notifications/:id', async (req, res) => {
-  const userId = parseInt(req.params.id);
+  const userId = req.params.id;
+  const limit = parseInt(req.query.limit) || 10; // Default to 10 if not provided
+  const offset = parseInt(req.query.offset) || 0; // Default to 0 (start from the first notification)
 
   try {
-    const result = await db.query(
-      `
-      SELECT n.id, n.from_id, n.to_id, n.type, n.post_id, n.time, p.title AS post_title
-      FROM notification n
-      LEFT JOIN post p ON n.post_id = p.id
-      WHERE n.to_id = $1
-      ORDER BY n.time DESC
-      `,
-      [userId]
+    const notifications = await db.query(
+      `SELECT n.*, p.title as post_title
+       FROM notification n
+       LEFT JOIN post p ON n.post_id = p.id
+       WHERE n.to_id = $1
+       ORDER BY n.time DESC
+       LIMIT $2 OFFSET $3`, 
+      [userId, limit, offset]
     );
-
-    res.json(result.rows);
+    res.json(notifications.rows);
   } catch (error) {
-    console.error('Error fetching notifications:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error(error);
+    res.status(500).json({ message: 'Error fetching notifications' });
   }
 });
+
 
 
 
