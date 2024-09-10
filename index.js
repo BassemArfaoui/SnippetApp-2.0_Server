@@ -39,7 +39,7 @@ app.get('/', async (req,res)=>{
 });
 
 
-
+//route to get the posts
 app.get('/:userId/posts', async (req, res) => {
   const { userId } = req.params;
   const limit = parseInt(req.query.limit) || 10;
@@ -75,9 +75,7 @@ app.get('/:userId/posts', async (req, res) => {
 });
 
 
-
-
-
+//route to get the notifications
 app.get('/notifications/:id', async (req, res) => {
   const userId = req.params.id;
   const limit = parseInt(req.query.limit) || 10; // Default to 10 if not provided
@@ -151,7 +149,6 @@ app.get('/dislike/:userId/:postId', async (req, res) => {
 });
 
 
-
 // Route to undislike a post
 app.get('/undislike/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
@@ -167,6 +164,22 @@ app.get('/undislike/:userId/:postId', async (req, res) => {
     res.status(500).json({ success: false });
   }
 });
+
+
+// Route to unsave a post
+app.get('/unsave/:userId/:postId', async (req, res) => {
+  const { userId, postId } = req.params;
+
+  try {
+    await db.query('DELETE FROM saves WHERE user_id = $1 AND post_id = $2', [userId, postId]);
+
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
 
 
 // Route to save a post
