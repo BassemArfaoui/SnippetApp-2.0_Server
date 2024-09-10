@@ -45,15 +45,20 @@ app.get('/:userId/posts', async (req, res) => {
   const limit = parseInt(req.query.limit) || 10;
 
   try {
-    // Fetch random posts with an additional isLiked field
+    // Fetch random posts with both isLiked and isDisliked fields
     const result = await db.query(`
       SELECT p.*, 
       CASE 
         WHEN l.post_id IS NOT NULL THEN TRUE 
         ELSE FALSE 
-      END AS "isLiked"
+      END AS "isLiked",
+      CASE 
+        WHEN d.post_id IS NOT NULL THEN TRUE 
+        ELSE FALSE 
+      END AS "isDisliked"
       FROM post p
       LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
+      LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
       ORDER BY RANDOM()
       LIMIT $2
     `, [userId, limit]);
@@ -64,6 +69,7 @@ app.get('/:userId/posts', async (req, res) => {
     res.status(500).json({ error: 'An error occurred' });
   }
 });
+
 
 
 
@@ -90,8 +96,6 @@ app.get('/notifications/:id', async (req, res) => {
 });
 
 
-
-
 // Route to like a post
 app.get('/like/:userId/:postId', async (req, res) => {
    const  userId  = req.params.userId;
@@ -107,19 +111,6 @@ app.get('/like/:userId/:postId', async (req, res) => {
     }
 });
 
-
-// Route to dislike a post
-app.get('/dislike/:id', async (req, res) => {
-    const { id } = req.params;
-
-    try {
-        await db.query('UPDATE post SET dislike_count = dislike_count + 1 WHERE id = $1', [id]);
-        res.status(200).json({ message: 'Disliked post' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
 
 // Route to unlike a post
 app.get('/unlike/:userId/:postId', async (req, res) => {
@@ -138,41 +129,42 @@ app.get('/unlike/:userId/:postId', async (req, res) => {
 });
 
 
-// Route to remove dislike from a post
-app.get('/undislike/:id', async (req, res) => {
-    const { id } = req.params;
+// Route to dislike a post
+app.get('/dislike/:userId/:postId', async (req, res) => {
+  const { userId, postId } = req.params;
 
-    try {
-        await db.query('UPDATE post SET dislike_count = dislike_count - 1 WHERE id = $1', [id]);
-        res.status(200).json({ message: 'Undisliked post' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Server error' });
-    }
+  try {
+    await db.query('INSERT INTO dislikes (post_id, user_id) VALUES ($1, $2)', [postId, userId]);
+
+    await db.query('UPDATE post SET dislike_count = dislike_count + 1 WHERE id = $1', [postId]);
+
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
 });
 
 
-app.get('/check/like/:userId/:postId',async (req,res)=>{
-  const userId = req.params.userId;
-  const postId = req.params.postId;
 
-  try
-  {
-      const result=await db.query('SELECT * FROM likes WHERE post_id = $1 AND user_id = $2',[postId,userId])
-      if(result.rows.length>0){
-        res.status(200).json({liked:true})
-      }else{
-        res.status(200).json({liked:false})
-      }
-    
-  }
-  catch(err)
-  {
+// Route to undislike a post
+app.get('/undislike/:userId/:postId', async (req, res) => {
+  const { userId, postId } = req.params;
+
+  try {
+    await db.query('DELETE FROM dislikes WHERE post_id = $1 AND user_id = $2', [postId, userId]);
+
+    await db.query('UPDATE post SET dislike_count = dislike_count - 1 WHERE id = $1', [postId]);
+
+    res.status(200).json({ success: true });
+  } catch (err) {
     console.error(err);
-    res.status(500).json({error:'Server error'})
+    res.status(500).json({ success: false });
   }
+});
 
-})
+
+
 
 
 app.post('/',async (req,res)=>
