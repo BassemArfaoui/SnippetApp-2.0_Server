@@ -45,7 +45,6 @@ app.get('/:userId/posts', async (req, res) => {
   const limit = parseInt(req.query.limit) || 10;
 
   try {
-    // Fetch random posts with both isLiked and isDisliked fields
     const result = await db.query(`
       SELECT p.*, 
       CASE 
@@ -55,10 +54,15 @@ app.get('/:userId/posts', async (req, res) => {
       CASE 
         WHEN d.post_id IS NOT NULL THEN TRUE 
         ELSE FALSE 
-      END AS "isDisliked"
+      END AS "isDisliked",
+      CASE 
+        WHEN s.post_id IS NOT NULL THEN TRUE 
+        ELSE FALSE 
+      END AS "isSaved"
       FROM post p
       LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
       LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
+      LEFT JOIN saves s ON s.post_id = p.id AND s.user_id = $1
       ORDER BY RANDOM()
       LIMIT $2
     `, [userId, limit]);
@@ -69,6 +73,7 @@ app.get('/:userId/posts', async (req, res) => {
     res.status(500).json({ error: 'An error occurred' });
   }
 });
+
 
 
 
@@ -156,6 +161,20 @@ app.get('/undislike/:userId/:postId', async (req, res) => {
 
     await db.query('UPDATE post SET dislike_count = dislike_count - 1 WHERE id = $1', [postId]);
 
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+
+// Route to save a post
+app.get('/save/:userId/:postId', async (req, res) => {
+  const { userId, postId } = req.params;
+
+  try {
+    await db.query('INSERT INTO saves (user_id, post_id) VALUES ($1, $2)', [userId, postId]);
     res.status(200).json({ success: true });
   } catch (err) {
     console.error(err);
