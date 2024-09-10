@@ -39,7 +39,6 @@ app.get('/', async (req,res)=>{
 });
 
 
-//route to get the posts
 app.get('/:userId/posts', async (req, res) => {
   const { userId } = req.params;
   const limit = parseInt(req.query.limit) || 10;
@@ -47,19 +46,23 @@ app.get('/:userId/posts', async (req, res) => {
   try {
     const result = await db.query(`
       SELECT p.*, 
-      CASE 
-        WHEN l.post_id IS NOT NULL THEN TRUE 
-        ELSE FALSE 
-      END AS "isLiked",
-      CASE 
-        WHEN d.post_id IS NOT NULL THEN TRUE 
-        ELSE FALSE 
-      END AS "isDisliked",
-      CASE 
-        WHEN s.post_id IS NOT NULL THEN TRUE 
-        ELSE FALSE 
-      END AS "isSaved"
+             u.firstname AS "poster_firstname",
+             u.lastname AS "poster_lastname",
+             u.username AS "poster_username",
+             CASE 
+               WHEN l.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isLiked",
+             CASE 
+               WHEN d.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isDisliked",
+             CASE 
+               WHEN s.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isSaved"
       FROM post p
+      LEFT JOIN users u ON p.poster_id = u.id
       LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
       LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
       LEFT JOIN saves s ON s.post_id = p.id AND s.user_id = $1
@@ -73,6 +76,7 @@ app.get('/:userId/posts', async (req, res) => {
     res.status(500).json({ error: 'An error occurred' });
   }
 });
+
 
 
 //route to get the notifications
