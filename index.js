@@ -60,12 +60,17 @@ app.get('/:userId/posts', async (req, res) => {
              CASE 
                WHEN s.post_id IS NOT NULL THEN TRUE 
                ELSE FALSE 
-             END AS "isSaved"
+             END AS "isSaved",
+             CASE 
+               WHEN i.interested_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isInterested"
       FROM post p
       LEFT JOIN users u ON p.poster_id = u.id
       LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
       LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
       LEFT JOIN saves s ON s.post_id = p.id AND s.user_id = $1
+      LEFT JOIN interests i ON i.interested_id = $1 AND i.interesting_id = p.poster_id
       ORDER BY RANDOM()
       LIMIT $2
     `, [userId, limit]);
@@ -76,6 +81,7 @@ app.get('/:userId/posts', async (req, res) => {
     res.status(500).json({ error: 'An error occurred' });
   }
 });
+
 
 
 
@@ -181,6 +187,36 @@ app.get('/unsave/:userId/:postId', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false });
+  }
+});
+
+
+// Route to express interest
+app.get('/interested/:interestedId/:interestingId', async (req, res) => {
+  const { interestedId, interestingId } = req.params;
+
+  try {
+   await db.query(` INSERT INTO interests (interested_id, interesting_id) VALUES ($1, $2) `, [interestedId, interestingId]);
+
+    res.status(200).json({ success: true});
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false});
+  }
+});
+
+
+// Route to express interest
+app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
+  const { interestedId, interestingId } = req.params;
+
+  try {
+   await db.query(` delete from interests where interested_id = $1 and  interesting_id=$2 `, [interestedId, interestingId]);
+
+    res.status(200).json({ success: true});
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false});
   }
 });
 
