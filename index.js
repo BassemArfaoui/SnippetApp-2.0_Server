@@ -115,7 +115,7 @@ app.get('/like/:userId/:postId', async (req, res) => {
     const  postId  = req.params.postId;
 
     try {
-        await db.query('INSERT INTO likes (post_id, user_id) VALUES ($1, $2)', [postId,userId])
+        await db.query('INSERT INTO likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT (post_id, user_id) DO NOTHING', [postId,userId])
         await db.query('UPDATE post SET like_count = like_count + 1 WHERE id = $1', [postId]);
         res.status(200).json({ success:true });
     } catch (err) {
@@ -147,7 +147,7 @@ app.get('/dislike/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
 
   try {
-    await db.query('INSERT INTO dislikes (post_id, user_id) VALUES ($1, $2)', [postId, userId]);
+    await db.query('INSERT INTO dislikes (post_id, user_id) VALUES ($1, $2) ON CONFLICT (post_id, user_id) DO NOTHING', [postId, userId]);
 
     await db.query('UPDATE post SET dislike_count = dislike_count + 1 WHERE id = $1', [postId]);
 
@@ -176,6 +176,20 @@ app.get('/undislike/:userId/:postId', async (req, res) => {
 });
 
 
+// Route to save a post
+app.get('/save/:userId/:postId', async (req, res) => {
+  const { userId, postId } = req.params;
+
+  try {
+    await db.query('INSERT INTO saves (user_id, post_id) VALUES ($1, $2) ON CONFLICT (post_id, user_id) DO NOTHING', [userId, postId]);
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+
 // Route to unsave a post
 app.get('/unsave/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
@@ -196,7 +210,7 @@ app.get('/interested/:interestedId/:interestingId', async (req, res) => {
   const { interestedId, interestingId } = req.params;
 
   try {
-   await db.query(` INSERT INTO interests (interested_id, interesting_id) VALUES ($1, $2) `, [interestedId, interestingId]);
+   await db.query(` INSERT INTO interests (interested_id, interesting_id) VALUES ($1, $2) ON CONFLICT (interested_id, interesting_id) DO NOTHING`, [interestedId, interestingId]);
 
     res.status(200).json({ success: true});
   } catch (err) {
@@ -206,7 +220,7 @@ app.get('/interested/:interestedId/:interestingId', async (req, res) => {
 });
 
 
-// Route to express interest
+// Route to remove interest
 app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
   const { interestedId, interestingId } = req.params;
 
@@ -222,18 +236,6 @@ app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
 
 
 
-// Route to save a post
-app.get('/save/:userId/:postId', async (req, res) => {
-  const { userId, postId } = req.params;
-
-  try {
-    await db.query('INSERT INTO saves (user_id, post_id) VALUES ($1, $2)', [userId, postId]);
-    res.status(200).json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
-  }
-});
 
 
 
