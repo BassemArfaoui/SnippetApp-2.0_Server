@@ -74,7 +74,7 @@ app.get('/:userId/posts', async (req, res) => {
       ORDER BY RANDOM()
       LIMIT $2
     `, [userId, limit]);
-
+    console.log('i am called')
     res.json(result.rows);
   } catch (err) {
     console.error(err);
