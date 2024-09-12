@@ -235,6 +235,43 @@ app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
 });
 
 
+app.get('/:postId/comments', async (req, res) => {
+  const { postId } = req.params;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const offset = (page - 1) * limit;
+
+  try {
+    const result = await db.query(
+      `
+      SELECT
+        c.id,
+        c.user_id,
+        c.content,
+        c.is_reply,
+        c.reply_to_id,
+        c.like_count,
+        c.dislike_count,
+        c.commented_at,
+        u.firstname,
+        u.lastname,
+        u.profile_pic
+      FROM comments c
+      JOIN users u ON c.user_id = u.id
+      WHERE c.post_id = $1
+      ORDER BY c.commented_at DESC
+      LIMIT $2 OFFSET $3
+      `,
+      [postId, limit, offset]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+    res.status(500).json({ error: 'An error occurred while fetching comments' });
+  }
+});
+
+
 
 
 
