@@ -88,14 +88,19 @@ app.get('/:userId/posts', async (req, res) => {
 //route to get the notifications
 app.get('/notifications/:id', async (req, res) => {
   const userId = req.params.id;
-  const limit = parseInt(req.query.limit) || 10; // Default to 10 if not provided
-  const offset = parseInt(req.query.offset) || 0; // Default to 0 (start from the first notification)
+  const limit = parseInt(req.query.limit) || 10; 
+  const offset = parseInt(req.query.offset) || 0; 
 
   try {
     const notifications = await db.query(
-      `SELECT n.*, p.title as post_title
+      `SELECT 
+         n.*, 
+         p.title AS post_title,
+         u.firstname AS from_firstname,
+         u.lastname AS from_lastname
        FROM notification n
        LEFT JOIN post p ON n.post_id = p.id
+       LEFT JOIN users u ON n.from_id = u.id
        WHERE n.to_id = $1
        ORDER BY n.time DESC
        LIMIT $2 OFFSET $3`, 
@@ -107,6 +112,7 @@ app.get('/notifications/:id', async (req, res) => {
     res.status(500).json({ message: 'Error fetching notifications' });
   }
 });
+
 
 
 // Route to like a post
@@ -238,7 +244,7 @@ app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
 app.get('/:postId/:userId/comments', async (req, res) => {
   const { postId, userId } = req.params;
   const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
+  const limit = parseInt(req.query.limit) || 20;
   const offset = (page - 1) * limit;
 
   try {
@@ -263,6 +269,7 @@ app.get('/:postId/:userId/comments', async (req, res) => {
       LEFT JOIN comment_likes cl_liked ON cl_liked.comment_id = c.id AND cl_liked.user_id = $2
       LEFT JOIN comment_dislikes cl_disliked ON cl_disliked.comment_id = c.id AND cl_disliked.user_id = $2
       WHERE c.post_id = $1
+      AND c.is_reply = false
       ORDER BY c.commented_at DESC
       LIMIT $3 OFFSET $4
       `,
@@ -274,6 +281,7 @@ app.get('/:postId/:userId/comments', async (req, res) => {
     res.status(500).json({ error: 'An error occurred while fetching comments' });
   }
 });
+
 
 
 
