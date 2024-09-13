@@ -283,10 +283,8 @@ app.get('/likeComment/:userId/:commentId', async (req, res) => {
   const commentId = req.params.commentId;
 
   try {
-    // Insert into the comment_likes table
     await db.query('INSERT INTO comment_likes (comment_id, user_id) VALUES ($1, $2) ON CONFLICT (comment_id, user_id) DO NOTHING', [commentId, userId]);
 
-    // Update the like_count in the comments table
     await db.query('UPDATE comments SET like_count = like_count + 1 WHERE id = $1', [commentId]);
 
     res.status(200).json({ success: true });
@@ -302,10 +300,8 @@ app.get('/unlikeComment/:userId/:commentId', async (req, res) => {
   const { userId, commentId } = req.params;
 
   try {
-    // Remove from the comment_likes table
     await db.query('DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2', [commentId, userId]);
 
-    // Update the like_count in the comments table
     await db.query('UPDATE comments SET like_count = like_count - 1 WHERE id = $1', [commentId]);
 
     res.status(200).json({ success: true });
@@ -322,10 +318,8 @@ app.get('/dislikeComment/:userId/:commentId', async (req, res) => {
 
 
   try {
-    // Insert into the comment_dislikes table
     await db.query('INSERT INTO comment_dislikes (comment_id, user_id) VALUES ($1, $2) ON CONFLICT (comment_id, user_id) DO NOTHING', [commentId, userId]);
 
-    // Update the dislike_count in the comments table
     await db.query('UPDATE comments SET dislike_count = dislike_count + 1 WHERE id = $1', [commentId]);
 
     res.status(200).json({ success: true });
@@ -342,10 +336,8 @@ app.get('/undislikeComment/:userId/:commentId', async (req, res) => {
   const { userId, commentId } = req.params;
 
   try {
-    // Remove from the comment_dislikes table
     await db.query('DELETE FROM comment_dislikes WHERE comment_id = $1 AND user_id = $2', [commentId, userId]);
 
-    // Update the dislike_count in the comments table
     await db.query('UPDATE comments SET dislike_count = dislike_count - 1 WHERE id = $1', [commentId]);
 
     res.status(200).json({ success: true });
