@@ -353,42 +353,81 @@ app.get('/undislikeComment/:userId/:commentId', async (req, res) => {
   }
 });
 
-
-// Route to the replies of a comment
+// Route to get the replies of a comment with pagination and total count
 app.get('/comments/:commentId/replies', async (req, res) => {
   const commentId = req.params.commentId;
-  const limit = parseInt(req.query.limit) || 10; 
-  const offset = parseInt(req.query.offset) || 0; 
+  const limit = parseInt(req.query.limit) || 2;  // Number of replies per page
+  const offset = parseInt(req.query.offset) || 0; // Page offset (starting point for this page)
 
   try {
-    const replies = await db.query(
-      `SELECT
-         c.id,
-         c.user_id,
-         c.content,
-         c.like_count,
-         c.dislike_count,
-         c.commented_at,
-         u.firstname,
-         u.lastname,
-         u.profile_pic,
-         COALESCE(cl_liked.id IS NOT NULL, false) AS liked,
-         COALESCE(cl_disliked.id IS NOT NULL, false) AS disliked
-       FROM comments c
-       JOIN users u ON c.user_id = u.id
-       LEFT JOIN comment_likes cl_liked ON cl_liked.comment_id = c.id
-       LEFT JOIN comment_dislikes cl_disliked ON cl_disliked.comment_id = c.id
-       WHERE c.is_reply = true AND c.reply_to_id = $1
-       ORDER BY c.commented_at ASC
-       LIMIT $2 OFFSET $3`, 
-      [commentId, limit, offset]
-    );
-    res.json(replies.rows);
+    // Query to get the paginated replies
+    const repliesQuery = `
+      SELECT
+        c.id,
+        c.user_id,
+        c.content,
+        c.like_count,
+        c.dislike_count,
+        c.commented_at,
+        u.firstname,
+        u.lastname,
+        u.profile_pic,
+        COALESCE(cl_liked.id IS NOT NULL, false) AS liked,
+        COALESCE(cl_disliked.id IS NOT NULL, false) AS disliked
+      FROM comments c
+      JOIN users u ON c.user_id = u.id
+      LEFT JOIN comment_likes cl_liked ON cl_liked.comment_id = c.id
+      LEFT JOIN comment_dislikes cl_disliked ON cl_disliked.comment_id = c.id
+      WHERE c.is_reply = true AND c.reply_to_id = $1
+      ORDER BY c.commented_at ASC
+      LIMIT $2 OFFSET $3
+    `;
+
+    // Query to get the total count of replies
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM comments
+      WHERE is_reply = true AND reply_to_id = $1
+    `;
+
+    // Execute the queries in parallel
+    const [repliesResult, countResult] = await Promise.all([
+      db.query(repliesQuery, [commentId, limit, offset]),
+      db.query(countQuery, [commentId])
+    ]);
+
+    const totalReplies = countResult.rows[0].total;
+    const replies = repliesResult.rows;
+
+    res.json({ totalReplies, replies });
   } catch (error) {
     console.error('Error fetching replies:', error);
     res.status(500).json({ message: 'Error fetching replies' });
   }
 });
+
+
+// Route to get the total replies count of a comment
+app.get('/comments/:commentId/repliesCount', async (req, res) => {
+  const commentId = req.params.commentId;
+
+  try {
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM comments
+      WHERE is_reply = true AND reply_to_id = $1
+    `;
+    
+    const countResult = await db.query(countQuery, [commentId]);
+    const totalReplies = countResult.rows[0].total;
+
+    res.json({ totalReplies });
+  } catch (error) {
+    console.error('Error fetching replies count:', error);
+    res.status(500).json({ message: 'Error fetching replies count' });
+  }
+});
+
 
 
 
