@@ -235,8 +235,8 @@ app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
 });
 
 
-app.get('/:postId/comments', async (req, res) => {
-  const { postId } = req.params;
+app.get('/:postId/:userId/comments', async (req, res) => {
+  const { postId, userId } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const offset = (page - 1) * limit;
@@ -255,14 +255,18 @@ app.get('/:postId/comments', async (req, res) => {
         c.commented_at,
         u.firstname,
         u.lastname,
-        u.profile_pic
+        u.profile_pic,
+        COALESCE(cl_liked.id IS NOT NULL, false) AS liked,
+        COALESCE(cl_disliked.id IS NOT NULL, false) AS disliked
       FROM comments c
       JOIN users u ON c.user_id = u.id
+      LEFT JOIN comment_likes cl_liked ON cl_liked.comment_id = c.id AND cl_liked.user_id = $2
+      LEFT JOIN comment_dislikes cl_disliked ON cl_disliked.comment_id = c.id AND cl_disliked.user_id = $2
       WHERE c.post_id = $1
       ORDER BY c.commented_at DESC
-      LIMIT $2 OFFSET $3
+      LIMIT $3 OFFSET $4
       `,
-      [postId, limit, offset]
+      [postId, userId, limit, offset]
     );
     res.json(result.rows);
   } catch (error) {
@@ -270,6 +274,8 @@ app.get('/:postId/comments', async (req, res) => {
     res.status(500).json({ error: 'An error occurred while fetching comments' });
   }
 });
+
+
 
 
 
