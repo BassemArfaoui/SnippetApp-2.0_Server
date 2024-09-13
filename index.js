@@ -283,8 +283,6 @@ app.get('/:postId/:userId/comments', async (req, res) => {
 });
 
 
-
-
 // Route to like a comment
 app.get('/likeComment/:userId/:commentId', async (req, res) => {
   const userId = req.params.userId;
@@ -355,6 +353,42 @@ app.get('/undislikeComment/:userId/:commentId', async (req, res) => {
   }
 });
 
+
+// Route to the replies of a comment
+app.get('/comments/:commentId/replies', async (req, res) => {
+  const commentId = req.params.commentId;
+  const limit = parseInt(req.query.limit) || 10; 
+  const offset = parseInt(req.query.offset) || 0; 
+
+  try {
+    const replies = await db.query(
+      `SELECT
+         c.id,
+         c.user_id,
+         c.content,
+         c.like_count,
+         c.dislike_count,
+         c.commented_at,
+         u.firstname,
+         u.lastname,
+         u.profile_pic,
+         COALESCE(cl_liked.id IS NOT NULL, false) AS liked,
+         COALESCE(cl_disliked.id IS NOT NULL, false) AS disliked
+       FROM comments c
+       JOIN users u ON c.user_id = u.id
+       LEFT JOIN comment_likes cl_liked ON cl_liked.comment_id = c.id
+       LEFT JOIN comment_dislikes cl_disliked ON cl_disliked.comment_id = c.id
+       WHERE c.is_reply = true AND c.reply_to_id = $1
+       ORDER BY c.commented_at ASC
+       LIMIT $2 OFFSET $3`, 
+      [commentId, limit, offset]
+    );
+    res.json(replies.rows);
+  } catch (error) {
+    console.error('Error fetching replies:', error);
+    res.status(500).json({ message: 'Error fetching replies' });
+  }
+});
 
 
 
