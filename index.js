@@ -434,7 +434,6 @@ app.post('/add/comment', async (req, res) => {
   const { userId, postId, content, isReply, replyToId } = req.body;
 
   try {
-    // Validate input
     if (!userId || !postId || !content) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
@@ -450,8 +449,8 @@ app.post('/add/comment', async (req, res) => {
       userId,
       postId,
       content,
-      isReply || false, 
-      replyToId || null, 
+      isReply , 
+      replyToId, 
     ]);
 
     const newComment = result.rows[0];
