@@ -430,6 +430,38 @@ app.get('/comments/:commentId/repliesCount', async (req, res) => {
 
 
 
+app.post('/add/comment', async (req, res) => {
+  const { userId, postId, content, isReply, replyToId } = req.body;
+
+  try {
+    // Validate input
+    if (!userId || !postId || !content) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    // Insert comment into the database
+    const insertCommentQuery = `
+      INSERT INTO comments (user_id, post_id, content, is_reply, reply_to_id)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING * ;
+    `;
+
+    const result = await db.query(insertCommentQuery, [
+      userId,
+      postId,
+      content,
+      isReply || false, 
+      replyToId || null, 
+    ]);
+
+    const newComment = result.rows[0];
+
+    res.status(201).json({ message: 'Comment added successfully', comment: newComment });
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    res.status(500).json({ message: 'Error adding comment' });
+  }
+});
 
 
 
