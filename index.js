@@ -453,6 +453,8 @@ app.post('/add/comment', async (req, res) => {
       replyToId, 
     ]);
 
+    await db.query('UPDATE post SET comment_count = comment_count + 1 WHERE id = $1', [postId]);
+
     const newComment = result.rows[0];
 
     res.status(201).json({ message: 'Comment added successfully', comment: newComment });
