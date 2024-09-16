@@ -466,6 +466,36 @@ app.post('/add/comment', async (req, res) => {
 
 
 
+// Get a post by its ID
+app.get('/post/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const queryText = `
+      SELECT p.*, u.username, u.firstname, u.lastname 
+      FROM post p
+      JOIN users u ON p.poster_id = u.id
+      WHERE p.id = $1
+    `;
+
+    const postResult = await db.query(queryText, [id]);
+
+    if (postResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    const post = postResult.rows[0];
+    res.json(post);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+
+
+
 
 
 
