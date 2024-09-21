@@ -74,7 +74,6 @@ app.get('/:userId/posts', async (req, res) => {
       ORDER BY RANDOM()
       LIMIT $2
     `, [userId, limit]);
-    console.log('i am called')
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -465,7 +464,6 @@ app.post('/add/comment', async (req, res) => {
 });
 
 
-
 // Get a post by its ID
 app.get('/post/:id', async (req, res) => {
   const { id } = req.params;
@@ -491,6 +489,110 @@ app.get('/post/:id', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+
+app.get('/:userId/saved-posts', async (req, res) => {
+  const { userId } = req.params;
+  const limit = parseInt(req.query.limit) || 10; 
+  const page = parseInt(req.query.page) || 1;    
+  const offset = (page - 1) * limit;             
+
+  console.log('saved route is called ')
+
+  try {
+    const result = await db.query(`
+      SELECT p.*, 
+             u.firstname AS "poster_firstname",
+             u.lastname AS "poster_lastname",
+             u.username AS "poster_username",
+             CASE 
+               WHEN l.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isLiked",
+             CASE 
+               WHEN d.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isDisliked",
+             CASE 
+               WHEN s.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isSaved",
+             s.saved_at,
+             CASE 
+               WHEN i.interested_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isInterested"
+      FROM saves s
+      JOIN post p ON p.id = s.post_id
+      LEFT JOIN users u ON p.poster_id = u.id
+      LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
+      LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
+      LEFT JOIN interests i ON i.interested_id = $1 AND i.interesting_id = p.poster_id
+      WHERE s.user_id = $1
+      ORDER BY s.saved_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred while fetching saved posts' });
+  }
+});
+
+app.get('/:userId/search-saved-posts', async (req, res) => {
+  const { userId } = req.params;
+  const limit = parseInt(req.query.limit) || 10; 
+  const page = parseInt(req.query.page) || 1;    
+  const keyword = req.query.keyword || '';       // Search keyword from query params
+  const offset = (page - 1) * limit;             
+
+  console.log('Search saved posts route is called');
+
+  try {
+    const result = await db.query(`
+      SELECT p.*, 
+             u.firstname AS "poster_firstname",
+             u.lastname AS "poster_lastname",
+             u.username AS "poster_username",
+             CASE 
+               WHEN l.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_liked",
+             CASE 
+               WHEN d.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_disliked",
+             CASE 
+               WHEN s.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_saved",
+             s.saved_at,
+             CASE 
+               WHEN i.interested_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_interested"
+      FROM saves s
+      JOIN post p ON p.id = s.post_id
+      LEFT JOIN users u ON p.poster_id = u.id
+      LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
+      LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
+      LEFT JOIN interests i ON i.interested_id = $1 AND i.interesting_id = p.poster_id
+      WHERE s.user_id = $1
+      AND (p.title ILIKE $2)  
+      ORDER BY s.saved_at DESC
+      LIMIT $3 OFFSET $4
+    `, [userId, `%${keyword}%`, limit, offset]);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred while fetching search results for saved posts' });
+  }
+});
+
+
+
 
 
 
