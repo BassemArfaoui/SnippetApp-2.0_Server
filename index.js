@@ -592,6 +592,66 @@ app.get('/:userId/search-saved-posts', async (req, res) => {
 });
 
 
+app.get('/:userId/saved-posts/filter', async (req, res) => {
+  const { userId } = req.params;
+  const { title, language, content, limit = 10, page = 1 } = req.query;
+
+  const offset = (page - 1) * limit;
+
+  try {
+    let query = `
+      SELECT sp.id, sp.post_id, p.title, p.snippet, p.description, p.poster_id, p.language,
+             p.like_count, p.dislike_count, p.comment_count, p.share_count,
+             u.firstname AS poster_firstname, u.lastname AS poster_lastname, u.username AS poster_username,
+             sp.saved_at
+      FROM saves sp
+      JOIN post p ON sp.post_id = p.id
+      JOIN users u ON p.poster_id = u.id
+      WHERE sp.user_id = $1
+    `;
+
+    const queryParams = [userId];
+
+    // Add filters if provided
+    if (title) {
+      queryParams.push(`%${title}%`);
+      query += ` AND p.title ILIKE $${queryParams.length}`;
+    }
+    if (language) {
+      queryParams.push(`%${language}%`);
+      query += ` AND p.language ILIKE $${queryParams.length}`;
+    }
+    if (content) {
+      queryParams.push(`%${content}%`);
+      query += ` AND p.snippet ILIKE $${queryParams.length}`;
+    }
+
+    query += `
+      ORDER BY sp.saved_at DESC
+      LIMIT $${queryParams.length + 1}
+      OFFSET $${queryParams.length + 2}
+    `;
+
+    queryParams.push(limit, offset);
+
+    // Log the query and the parameters to troubleshoot
+    console.log('Executing query:', query);
+    console.log('With parameters:', queryParams);
+
+    const result = await db.query(query, queryParams);
+
+    // Log the result to see what is returned from the database
+    console.log('Query result:', result.rows);
+
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error filtering saved posts:', error);
+    res.status(500).json({ message: 'Error filtering saved posts' });
+  }
+});
+
+
+
 
 
 
