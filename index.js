@@ -600,14 +600,34 @@ app.get('/:userId/saved-posts/filter', async (req, res) => {
 
   try {
     let query = `
-      SELECT sp.id, sp.post_id, p.title, p.snippet, p.description, p.poster_id, p.language,
-             p.like_count, p.dislike_count, p.comment_count, p.share_count,
-             u.firstname AS poster_firstname, u.lastname AS poster_lastname, u.username AS poster_username,
-             sp.saved_at
-      FROM saves sp
-      JOIN post p ON sp.post_id = p.id
-      JOIN users u ON p.poster_id = u.id
-      WHERE sp.user_id = $1
+      SELECT p.*, 
+             u.firstname AS "poster_firstname",
+             u.lastname AS "poster_lastname",
+             u.username AS "poster_username",
+             CASE 
+               WHEN l.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_liked",
+             CASE 
+               WHEN d.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_disliked",
+             CASE 
+               WHEN s.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_saved",
+             s.saved_at,
+             CASE 
+               WHEN i.interested_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_interested"
+      FROM saves s
+      JOIN post p ON p.id = s.post_id
+      LEFT JOIN users u ON p.poster_id = u.id
+      LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
+      LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
+      LEFT JOIN interests i ON i.interested_id = $1 AND i.interesting_id = p.poster_id
+      WHERE s.user_id = $1
     `;
 
     const queryParams = [userId];
@@ -627,7 +647,7 @@ app.get('/:userId/saved-posts/filter', async (req, res) => {
     }
 
     query += `
-      ORDER BY sp.saved_at DESC
+      ORDER BY s.saved_at DESC
       LIMIT $${queryParams.length + 1}
       OFFSET $${queryParams.length + 2}
     `;
@@ -649,6 +669,7 @@ app.get('/:userId/saved-posts/filter', async (req, res) => {
     res.status(500).json({ message: 'Error filtering saved posts' });
   }
 });
+
 
 
 
