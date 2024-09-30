@@ -184,9 +184,20 @@ app.get('/undislike/:userId/:postId', async (req, res) => {
 // Route to save a post
 app.get('/save/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
+  let collection;
+
+  if(req.query.collection && req.query.collection.trim())
+  {
+    collection=req.query.collection.trim().toLowerCase();
+  }
+  else
+  {
+    collection='none'
+  }
+  
 
   try {
-    await db.query('INSERT INTO saves (user_id, post_id) VALUES ($1, $2) ON CONFLICT (post_id, user_id) DO NOTHING', [userId, postId]);
+    await db.query('INSERT INTO saves (user_id, post_id , collection) VALUES ($1, $2 , $3) ON CONFLICT (post_id, user_id) DO NOTHING', [userId, postId,collection]);
     res.status(200).json({ success: true });
   } catch (err) {
     console.error(err);
