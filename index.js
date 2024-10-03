@@ -82,8 +82,6 @@ app.get('/:userId/posts', async (req, res) => {
 });
 
 
-
-
 //route to get the notifications
 app.get('/notifications/:id', async (req, res) => {
   const userId = req.params.id;
@@ -111,7 +109,6 @@ app.get('/notifications/:id', async (req, res) => {
     res.status(500).json({ message: 'Error fetching notifications' });
   }
 });
-
 
 
 // Route to like a post
@@ -192,7 +189,7 @@ app.get('/save/:userId/:postId', async (req, res) => {
   }
   else
   {
-    collection='none'
+    collection='no collection'
   }
   
 
@@ -363,6 +360,7 @@ app.get('/undislikeComment/:userId/:commentId', async (req, res) => {
   }
 });
 
+
 // Route to get the replies of a comment with pagination and total count
 app.get('/comments/:commentId/replies', async (req, res) => {
   const commentId = req.params.commentId;
@@ -437,7 +435,6 @@ app.get('/comments/:commentId/repliesCount', async (req, res) => {
     res.status(500).json({ message: 'Error fetching replies count' });
   }
 });
-
 
 
 app.post('/add/comment', async (req, res) => {
@@ -550,6 +547,7 @@ app.get('/:userId/saved-posts', async (req, res) => {
     res.status(500).json({ error: 'An error occurred while fetching saved posts' });
   }
 });
+
 
 app.get('/:userId/search-saved-posts', async (req, res) => {
   const { userId } = req.params;
@@ -682,7 +680,6 @@ app.get('/:userId/saved-posts/filter', async (req, res) => {
 });
 
 
-
 // Route to get all collections for a specific user
 app.get('/:userId/collections', async (req, res) => {
   const { userId } = req.params;
@@ -690,7 +687,14 @@ app.get('/:userId/collections', async (req, res) => {
   try {
     // Query to fetch distinct collections for the user
     const result = await db.query(
-      'SELECT DISTINCT collection FROM saves WHERE user_id = $1 AND collection IS NOT NULL',
+      `SELECT collection
+       FROM (
+         SELECT DISTINCT ON (collection) collection, id
+         FROM saves
+         WHERE user_id = $1 AND collection IS NOT NULL
+         ORDER BY collection, id DESC
+       ) subquery
+       ORDER BY CASE WHEN collection = 'no collection' THEN 0 ELSE 1 END, collection ASC`,
       [userId]
     );
 
@@ -701,11 +705,64 @@ app.get('/:userId/collections', async (req, res) => {
 
     // Send back the list of collections
     res.json(result.rows.map(row => row.collection));
+
   } catch (error) {
     console.error('Error fetching collections:', error);
     res.status(500).json({ message: 'Server error, please try again later.' });
   }
 });
+
+
+app.get('/:userId/collection/posts/:collectionName', async (req, res) => {
+  const { userId, collectionName } = req.params;
+  const limit = parseInt(req.query.limit) || 10;
+  const page = parseInt(req.query.page) || 1;
+  const offset = (page - 1) * limit;
+
+  console.log('Fetching saved posts by collection route is called');
+
+  try {
+    const result = await db.query(`
+      SELECT p.*, 
+             u.firstname AS "poster_firstname",
+             u.lastname AS "poster_lastname",
+             u.username AS "poster_username",
+             CASE 
+               WHEN l.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_liked",
+             CASE 
+               WHEN d.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_disliked",
+             CASE 
+               WHEN s.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_saved",
+             s.saved_at,
+             CASE 
+               WHEN i.interested_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "is_interested"
+      FROM saves s
+      JOIN post p ON p.id = s.post_id
+      LEFT JOIN users u ON p.poster_id = u.id
+      LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
+      LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
+      LEFT JOIN interests i ON i.interested_id = $1 AND i.interesting_id = p.poster_id
+      WHERE s.user_id = $1
+      AND s.collection = $2
+      ORDER BY s.saved_at DESC
+      LIMIT $3 OFFSET $4
+    `, [userId, collectionName, limit, offset]);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred while fetching saved posts by collection' });
+  }
+});
+
 
 
 
