@@ -756,6 +756,42 @@ app.get('/:userId/collection/posts/:collectionName', async (req, res) => {
 });
 
 
+app.get('/snippets', async (req, res) => {
+  try {
+    // Get 'page' and 'limit' from query params or set default values
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    // Calculate the offset for pagination
+    const offset = (page - 1) * limit;
+
+    // Query to fetch snippets with pagination
+    const result = await db.query(`
+      SELECT id, title, content, language, created_at, modified_at
+      FROM snippet
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    // Query to get total count of snippets (for pagination metadata)
+    const countResult = await db.query('SELECT COUNT(*) FROM snippet');
+    const totalCount = parseInt(countResult.rows[0].count, 10);
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalCount / limit);
+
+    // Send response with paginated data and pagination metadata
+    res.json({
+      totalPages,
+      snippets: result.rows
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
 
 
 
