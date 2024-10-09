@@ -336,7 +336,6 @@ app.get('/dislikeComment/:userId/:commentId', async (req, res) => {
     await db.query('UPDATE comments SET dislike_count = dislike_count + 1 WHERE id = $1', [commentId]);
 
     res.status(200).json({ success: true });
-    console.log('dislike called')
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false });
@@ -505,7 +504,6 @@ app.get('/:userId/saved-posts', async (req, res) => {
   const page = parseInt(req.query.page) || 1;    
   const offset = (page - 1) * limit;             
 
-  console.log('saved route is called ')
 
   try {
     const result = await db.query(`
@@ -556,7 +554,6 @@ app.get('/:userId/search-saved-posts', async (req, res) => {
   const keyword = req.query.keyword || '';       // Search keyword from query params
   const offset = (page - 1) * limit;             
 
-  console.log('Search saved posts route is called');
 
   try {
     const result = await db.query(`
@@ -663,14 +660,10 @@ app.get('/:userId/saved-posts/filter', async (req, res) => {
 
     queryParams.push(limit, offset);
 
-    // Log the query and the parameters to troubleshoot
-    console.log('Executing query:', query);
-    console.log('With parameters:', queryParams);
 
     const result = await db.query(query, queryParams);
 
     // Log the result to see what is returned from the database
-    console.log('Query result:', result.rows);
 
     res.status(200).json(result.rows);
   } catch (error) {
@@ -719,7 +712,6 @@ app.get('/:userId/collection/posts/:collectionName', async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const offset = (page - 1) * limit;
 
-  console.log('Fetching saved posts by collection route is called');
 
   try {
     const result = await db.query(`
