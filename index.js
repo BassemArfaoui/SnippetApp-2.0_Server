@@ -756,8 +756,9 @@ app.get('/:userId/collection/posts/:collectionName', async (req, res) => {
 });
 
 
-app.get('/snippets', async (req, res) => {
+app.get('/:userId/snippets', async (req, res) => {
   try {
+    const userId=req.params.userId;
     // Get 'page' and 'limit' from query params or set default values
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -769,9 +770,10 @@ app.get('/snippets', async (req, res) => {
     const result = await db.query(`
       SELECT id, title, content, language, created_at, modified_at
       FROM snippet
+      where user_id=$3
       ORDER BY created_at DESC
       LIMIT $1 OFFSET $2
-    `, [limit, offset]);
+    `, [limit, offset,userId]);
 
     // Query to get total count of snippets (for pagination metadata)
     const countResult = await db.query('SELECT COUNT(*) FROM snippet');
