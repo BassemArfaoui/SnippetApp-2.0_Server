@@ -768,7 +768,7 @@ app.get('/:userId/snippets', async (req, res) => {
 
     // Query to fetch snippets with pagination
     const result = await db.query(`
-      SELECT id, title, content, language, created_at, modified_at
+      SELECT id, title, content, language,is_posted, created_at, modified_at
       FROM snippet
       where user_id=$3
       ORDER BY created_at DESC
