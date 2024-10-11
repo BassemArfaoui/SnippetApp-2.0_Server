@@ -812,6 +812,28 @@ app.delete('/:userId/delete/snippet/:snippetId',async (req,res)=>
 })
 
 
+app.put('/:userId/edit/snippet/:snippetId', async (req, res) => {
+  const snippetId = req.params.snippetId;
+  const userId = req.params.userId;
+  console.log(req.body);
+  const { title, content, language } = req.body;
+
+  try {
+    // Update snippet in the database
+    await db.query(
+      'UPDATE snippet SET title = $1, content = $2, language = $3, modified_at = NOW() WHERE id = $4 AND user_id = $5',
+      [title, content, language, snippetId, userId]
+    );
+
+    res.status(200).json({ message: 'Snippet updated successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
+
 
 
 
