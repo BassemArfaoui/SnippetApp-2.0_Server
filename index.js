@@ -794,6 +794,24 @@ app.get('/:userId/snippets', async (req, res) => {
 });
 
 
+app.delete('/:userId/delete/snippet/:snippetId',async (req,res)=>
+{
+  const snippetId=req.params.snippetId;
+  const userId=req.params.userId;
+
+  try{
+    await db.query('DELETE FROM snippet WHERE id=$1 AND user_id=$2',[snippetId,userId]);
+    res.status(200).json({message:'Snippet deleted successfully'});
+  }
+  catch(err)
+  {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+  
+})
+
+
 
 
 
