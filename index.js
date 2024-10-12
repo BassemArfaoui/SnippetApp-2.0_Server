@@ -816,9 +816,10 @@ app.put('/:userId/edit/snippet/:snippetId', async (req, res) => {
   const snippetId = req.params.snippetId;
   const userId = req.params.userId;
   const { title, content, language } = req.body;
-  if(!title || !content || !language) throw new Error('Please provide all the required fields');
-
+  
   try {
+
+    if(!title || !content || !language || !title.trim() || !content.trim() || !language.trim()) throw new Error('Please provide all the required fields');
     // Update snippet in the database
     await db.query(
       'UPDATE snippet SET title = $1, content = $2, language = $3, modified_at = NOW() WHERE id = $4 AND user_id = $5',
@@ -837,9 +838,10 @@ app.post('/:userId/add/snippet', async (req, res) => {
   const userId = req.params.userId;
   const { title, content, language } = req.body;
 
-  if(!title || !content || !language) throw new Error('Please provide all the required fields');
-
   try {
+    
+    if(!title || !content || !language || !title.trim() || !content.trim() || !language.trim()) throw new Error('Please provide all the required fields');
+
     // Add snippet to the database
     await db.query(
       'INSERT INTO snippet (title, content, language, user_id) VALUES ($1 ,$2 ,$3 , $4);',
