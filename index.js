@@ -856,8 +856,9 @@ app.post('/:userId/add/snippet', async (req, res) => {
 });
 
 
-app.post('/:userId/add/post', async (req, res) => {
+app.post('/:userId/add/post/:snippetId', async (req, res) => {
   const userId = req.params.userId;
+  const snippetId=req.params.snippetId;
   const { title, content, language , description , gitHubLink} = req.body;
 
   try {
@@ -869,6 +870,8 @@ app.post('/:userId/add/post', async (req, res) => {
       'INSERT INTO post (title, snippet, language, poster_id ,description , github_link) VALUES ($1 ,$2 ,$3 , $4 ,$5 ,$6);',
       [title, content, language, userId, description, gitHubLink]
     );
+
+    await db.query('update snippet set is_posted = true where id=$1', [snippetId]);
 
     res.status(200).json({ message: 'Post Uploded Successfully' });
   } catch (err) {
