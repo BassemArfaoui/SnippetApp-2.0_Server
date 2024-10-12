@@ -815,8 +815,8 @@ app.delete('/:userId/delete/snippet/:snippetId',async (req,res)=>
 app.put('/:userId/edit/snippet/:snippetId', async (req, res) => {
   const snippetId = req.params.snippetId;
   const userId = req.params.userId;
-  console.log(req.body);
   const { title, content, language } = req.body;
+  if(!title || !content || !language) throw new Error('Please provide all the required fields');
 
   try {
     // Update snippet in the database
@@ -825,7 +825,28 @@ app.put('/:userId/edit/snippet/:snippetId', async (req, res) => {
       [title, content, language, snippetId, userId]
     );
 
-    res.status(200).json({ message: 'Snippet updated successfully' });
+    res.status(200).json({ message: 'Snippet Updated successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
+app.post('/:userId/add/snippet', async (req, res) => {
+  const userId = req.params.userId;
+  const { title, content, language } = req.body;
+
+  if(!title || !content || !language) throw new Error('Please provide all the required fields');
+
+  try {
+    // Add snippet to the database
+    await db.query(
+      'INSERT INTO snippet (title, content, language, user_id) VALUES ($1 ,$2 ,$3 , $4);',
+      [title, content, language, userId]
+    );
+
+    res.status(200).json({ message: 'Snippet Added successfully' });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Server error' });
