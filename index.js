@@ -26,7 +26,7 @@ app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 const corsOptions = {
-  origin: 'http://localhost:3000' 
+  origin: ['http://localhost:3000','http://localhost:3001' ]
 };
 app.use(cors(corsOptions));
 
@@ -82,7 +82,6 @@ app.get('/:userId/posts', async (req, res) => {
 });
 
 
-//route to get the notifications
 app.get('/notifications/:id', async (req, res) => {
   const userId = req.params.id;
   const limit = parseInt(req.query.limit) || 10; 
@@ -111,7 +110,6 @@ app.get('/notifications/:id', async (req, res) => {
 });
 
 
-// Route to like a post
 app.get('/like/:userId/:postId', async (req, res) => {
    const  userId  = req.params.userId;
     const  postId  = req.params.postId;
@@ -127,7 +125,6 @@ app.get('/like/:userId/:postId', async (req, res) => {
 });
 
 
-// Route to unlike a post
 app.get('/unlike/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
 
@@ -144,7 +141,6 @@ app.get('/unlike/:userId/:postId', async (req, res) => {
 });
 
 
-// Route to dislike a post
 app.get('/dislike/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
 
@@ -161,7 +157,6 @@ app.get('/dislike/:userId/:postId', async (req, res) => {
 });
 
 
-// Route to undislike a post
 app.get('/undislike/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
 
@@ -178,7 +173,6 @@ app.get('/undislike/:userId/:postId', async (req, res) => {
 });
 
 
-// Route to save a post
 app.get('/save/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
   let collection;
@@ -203,7 +197,6 @@ app.get('/save/:userId/:postId', async (req, res) => {
 });
 
 
-// Route to unsave a post
 app.get('/unsave/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
 
@@ -218,7 +211,6 @@ app.get('/unsave/:userId/:postId', async (req, res) => {
 });
 
 
-// Route to express interest
 app.get('/interested/:interestedId/:interestingId', async (req, res) => {
   const { interestedId, interestingId } = req.params;
 
@@ -233,7 +225,6 @@ app.get('/interested/:interestedId/:interestingId', async (req, res) => {
 });
 
 
-// Route to remove interest
 app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
   const { interestedId, interestingId } = req.params;
 
@@ -290,7 +281,6 @@ app.get('/:postId/:userId/comments', async (req, res) => {
 });
 
 
-// Route to like a comment
 app.get('/likeComment/:userId/:commentId', async (req, res) => {
   const userId = req.params.userId;
   const commentId = req.params.commentId;
@@ -308,7 +298,6 @@ app.get('/likeComment/:userId/:commentId', async (req, res) => {
 });
 
 
-// Route to unlike a comment
 app.get('/unlikeComment/:userId/:commentId', async (req, res) => {
   const { userId, commentId } = req.params;
 
@@ -325,7 +314,6 @@ app.get('/unlikeComment/:userId/:commentId', async (req, res) => {
 });
 
 
-// Route to dislike a comment
 app.get('/dislikeComment/:userId/:commentId', async (req, res) => {
   const { userId, commentId } = req.params;
 
@@ -343,7 +331,6 @@ app.get('/dislikeComment/:userId/:commentId', async (req, res) => {
 });
 
 
-// Route to undislike a comment
 app.get('/undislikeComment/:userId/:commentId', async (req, res) => {
   const { userId, commentId } = req.params;
 
@@ -360,14 +347,13 @@ app.get('/undislikeComment/:userId/:commentId', async (req, res) => {
 });
 
 
-// Route to get the replies of a comment with pagination and total count
 app.get('/comments/:commentId/replies', async (req, res) => {
   const commentId = req.params.commentId;
-  const limit = parseInt(req.query.limit) || 2;  // Number of replies per page
-  const offset = parseInt(req.query.offset) || 0; // Page offset (starting point for this page)
+  const limit = parseInt(req.query.limit) || 2;  
+  const offset = parseInt(req.query.offset) || 0; 
 
   try {
-    // Query to get the paginated replies
+
     const repliesQuery = `
       SELECT
         c.id,
@@ -390,14 +376,13 @@ app.get('/comments/:commentId/replies', async (req, res) => {
       LIMIT $2 OFFSET $3
     `;
 
-    // Query to get the total count of replies
+   
     const countQuery = `
       SELECT COUNT(*) AS total
       FROM comments
       WHERE is_reply = true AND reply_to_id = $1
     `;
 
-    // Execute the queries in parallel
     const [repliesResult, countResult] = await Promise.all([
       db.query(repliesQuery, [commentId, limit, offset]),
       db.query(countQuery, [commentId])
@@ -414,7 +399,6 @@ app.get('/comments/:commentId/replies', async (req, res) => {
 });
 
 
-// Route to get the total replies count of a comment
 app.get('/comments/:commentId/repliesCount', async (req, res) => {
   const commentId = req.params.commentId;
 
@@ -444,7 +428,6 @@ app.post('/add/comment', async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    // Insert comment into the database
     const insertCommentQuery = `
       INSERT INTO comments (user_id, post_id, content, is_reply, reply_to_id)
       VALUES ($1, $2, $3, $4, $5)
@@ -471,7 +454,6 @@ app.post('/add/comment', async (req, res) => {
 });
 
 
-// Get a post by its ID
 app.get('/post/:id', async (req, res) => {
   const { id } = req.params;
 
@@ -551,7 +533,7 @@ app.get('/:userId/search-saved-posts', async (req, res) => {
   const { userId } = req.params;
   const limit = parseInt(req.query.limit) || 10; 
   const page = parseInt(req.query.page) || 1;    
-  const keyword = req.query.keyword || '';       // Search keyword from query params
+  const keyword = req.query.keyword || '';       
   const offset = (page - 1) * limit;             
 
 
@@ -638,7 +620,6 @@ app.get('/:userId/saved-posts/filter', async (req, res) => {
 
     const queryParams = [userId];
 
-    // Add filters if provided
     if (title) {
       queryParams.push(`%${title}%`);
       query += ` AND p.title ILIKE $${queryParams.length}`;
@@ -663,7 +644,6 @@ app.get('/:userId/saved-posts/filter', async (req, res) => {
 
     const result = await db.query(query, queryParams);
 
-    // Log the result to see what is returned from the database
 
     res.status(200).json(result.rows);
   } catch (error) {
@@ -673,12 +653,10 @@ app.get('/:userId/saved-posts/filter', async (req, res) => {
 });
 
 
-// Route to get all collections for a specific user
 app.get('/:userId/collections', async (req, res) => {
   const { userId } = req.params;
 
   try {
-    // Query to fetch distinct collections for the user
     const result = await db.query(
       `SELECT collection
        FROM (
@@ -691,12 +669,10 @@ app.get('/:userId/collections', async (req, res) => {
       [userId]
     );
 
-    // Check if the user has any collections
     if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'No collections found for this user.' });
+      return res.json({ message: 'No collections found for this user.' });
     }
 
-    // Send back the list of collections
     res.json(result.rows.map(row => row.collection));
 
   } catch (error) {
@@ -759,14 +735,11 @@ app.get('/:userId/collection/posts/:collectionName', async (req, res) => {
 app.get('/:userId/snippets', async (req, res) => {
   try {
     const userId=req.params.userId;
-    // Get 'page' and 'limit' from query params or set default values
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     
-    // Calculate the offset for pagination
     const offset = (page - 1) * limit;
 
-    // Query to fetch snippets with pagination
     const result = await db.query(`
       SELECT id, title, content, language,is_posted, created_at, modified_at
       FROM snippet
@@ -775,14 +748,11 @@ app.get('/:userId/snippets', async (req, res) => {
       LIMIT $1 OFFSET $2
     `, [limit, offset,userId]);
 
-    // Query to get total count of snippets (for pagination metadata)
     const countResult = await db.query('SELECT COUNT(*) FROM snippet');
     const totalCount = parseInt(countResult.rows[0].count, 10);
 
-    // Calculate total pages
     const totalPages = Math.ceil(totalCount / limit);
 
-    // Send response with paginated data and pagination metadata
     res.json({
       totalPages,
       snippets: result.rows
@@ -890,15 +860,6 @@ app.post('/:userId/add/post/:snippetId', async (req, res) => {
 
 
 
-
-
-
-
-
-app.post('/',async (req,res)=>
-{ 
-  
-})
 
 
 
