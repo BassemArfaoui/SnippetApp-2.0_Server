@@ -851,6 +851,25 @@ app.post('/:userId/add/post/:snippetId', async (req, res) => {
 });
 
 
+app.post('/:userId/add-post/', async (req, res) => {
+  const userId = req.params.userId;
+  const { title, content, language , description , gitHubLink} = req.body;
+
+  try {
+    
+    if(!title.trim() || !content.trim() || !language.trim()) throw new Error('Please provide all the required fields');
+
+    // Add post to the database
+    await db.query(
+      'INSERT INTO post (title, snippet, language, poster_id ,description , github_link) VALUES ($1 ,$2 ,$3 , $4 ,$5 ,$6);',
+      [title, content, language, userId, description, gitHubLink]
+    );
+    res.status(200).json({ message: 'Post Uploded Successfully' });
+  } catch (err) {
+    console.error(err.stack);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 
 
