@@ -872,8 +872,85 @@ app.post('/:userId/add-post/', async (req, res) => {
 });
 
 
+app.get('/published/posts/:userId/', async (req, res) => {
+  const { userId } = req.params;
+  const page = parseInt(req.query.page) || 1;  // Default to page 1 if not provided
+  const limit = parseInt(req.query.limit) || 10;  // Default to 10 posts per page if not provided
+  const offset = (page - 1) * limit;  // Calculate offset
+
+  try {
+    const result = await db.query(`
+      SELECT p.*, 
+             u.firstname AS "poster_firstname",
+             u.lastname AS "poster_lastname",
+             u.username AS "poster_username",
+             CASE 
+               WHEN l.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isLiked",
+             CASE 
+               WHEN d.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isDisliked",
+             CASE 
+               WHEN s.post_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isSaved",
+             CASE 
+               WHEN i.interested_id IS NOT NULL THEN TRUE 
+               ELSE FALSE 
+             END AS "isInterested"
+      FROM post p
+      LEFT JOIN users u ON p.poster_id = u.id
+      LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
+      LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
+      LEFT JOIN saves s ON s.post_id = p.id AND s.user_id = $1
+      LEFT JOIN interests i ON i.interested_id = $1 AND i.interesting_id = p.poster_id
+      WHERE p.poster_id = $1
+      ORDER BY p.posted_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    // Count total number of posts to calculate total pages
+    const countResult = await db.query(`
+      SELECT COUNT(*) FROM post WHERE poster_id = $1
+    `, [userId]);
+
+    const totalPosts = parseInt(countResult.rows[0].count, 10);
+    const totalPages = Math.ceil(totalPosts / limit);
+
+    res.json({
+      totalPages,
+      currentPage: page,
+      posts: result.rows
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred' });
+  }
+});
 
 
+
+app.get("/profile/:id", async (req, res) => {
+  const userId = req.params.id;
+
+  try {
+    const user = await db.query(
+      "SELECT id, firstname, lastname, username, email, createdAt, profile_pic FROM users WHERE id = $1",
+      [userId]
+    );
+
+    if (user.rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json(user.rows[0]);
+  } catch (error) {
+    console.error("Error fetching profile:", error);
+    res.status(500).json({ message: "An error occurred while fetching the profile" });
+  }
+});
 
 
 
