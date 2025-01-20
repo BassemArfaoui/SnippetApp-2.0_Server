@@ -111,62 +111,133 @@ app.get('/notifications/:id', async (req, res) => {
 
 
 app.get('/like/:userId/:postId', async (req, res) => {
-   const  userId  = req.params.userId;
-    const  postId  = req.params.postId;
+  const userId = req.params.userId;
+  const postId = req.params.postId;
 
-    try {
-        await db.query('INSERT INTO likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT (post_id, user_id) DO NOTHING', [postId,userId])
-        await db.query('UPDATE post SET like_count = like_count + 1 WHERE id = $1', [postId]);
-        res.status(200).json({ success:true });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success:false });
-    }
+  try {
+    await db.query('BEGIN'); 
+
+    await db.query(
+      'INSERT INTO likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT (post_id, user_id) DO NOTHING',
+      [postId, userId]
+    );
+
+    await db.query('UPDATE post SET like_count = like_count + 1 WHERE id = $1', [postId]);
+
+    await db.query(
+      `
+      UPDATE users
+      SET credit = credit + 3
+      WHERE id = (SELECT poster_id FROM post WHERE id = $1)
+      `,
+      [postId]
+    );
+
+    await db.query('COMMIT');
+
+    res.status(200).json({ success: true });
+
+  } catch (err) {
+    await db.query('ROLLBACK'); 
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
 });
+
 
 
 app.get('/unlike/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
 
   try {
+    await db.query('BEGIN'); 
+
     await db.query('DELETE FROM likes WHERE post_id = $1 AND user_id = $2', [postId, userId]);
 
     await db.query('UPDATE post SET like_count = like_count - 1 WHERE id = $1', [postId]);
 
+    await db.query(
+      `
+      UPDATE users
+      SET credit = credit - 3
+      WHERE id = (SELECT poster_id FROM post WHERE id = $1)
+      `,
+      [postId]
+    );
+
+    await db.query('COMMIT'); 
+
     res.status(200).json({ success: true });
+
   } catch (err) {
+    await db.query('ROLLBACK'); 
     console.error(err);
     res.status(500).json({ success: false });
   }
 });
+
 
 
 app.get('/dislike/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
 
   try {
-    await db.query('INSERT INTO dislikes (post_id, user_id) VALUES ($1, $2) ON CONFLICT (post_id, user_id) DO NOTHING', [postId, userId]);
+    await db.query('BEGIN'); 
+
+    await db.query(
+      'INSERT INTO dislikes (post_id, user_id) VALUES ($1, $2) ON CONFLICT (post_id, user_id) DO NOTHING',
+      [postId, userId]
+    );
 
     await db.query('UPDATE post SET dislike_count = dislike_count + 1 WHERE id = $1', [postId]);
 
+    await db.query(
+      `
+      UPDATE users
+      SET credit = credit - 1
+      WHERE id = (SELECT poster_id FROM post WHERE id = $1)
+      `,
+      [postId]
+    );
+
+    await db.query('COMMIT'); 
+
     res.status(200).json({ success: true });
+
   } catch (err) {
+    await db.query('ROLLBACK'); 
     console.error(err);
     res.status(500).json({ success: false });
   }
 });
 
 
+
+
 app.get('/undislike/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
 
   try {
+    await db.query('BEGIN');
     await db.query('DELETE FROM dislikes WHERE post_id = $1 AND user_id = $2', [postId, userId]);
 
     await db.query('UPDATE post SET dislike_count = dislike_count - 1 WHERE id = $1', [postId]);
 
+    await db.query(
+      `
+      UPDATE users
+      SET credit = credit + 1
+      WHERE id = (SELECT poster_id FROM post WHERE id = $1)
+      `,
+      [postId]
+    );
+
+    await db.query('COMMIT'); 
+
     res.status(200).json({ success: true });
+
   } catch (err) {
+    await db.query('ROLLBACK'); 
     console.error(err);
     res.status(500).json({ success: false });
   }
@@ -215,12 +286,25 @@ app.get('/interested/:interestedId/:interestingId', async (req, res) => {
   const { interestedId, interestingId } = req.params;
 
   try {
-   await db.query(` INSERT INTO interests (interested_id, interesting_id) VALUES ($1, $2) ON CONFLICT (interested_id, interesting_id) DO NOTHING`, [interestedId, interestingId]);
+    await db.query(
+      `
+      WITH inserted AS (
+        INSERT INTO interests (interested_id, interesting_id)
+        VALUES ($1, $2)
+        ON CONFLICT (interested_id, interesting_id) DO NOTHING
+        RETURNING interesting_id
+      )
+      UPDATE users
+      SET subs_count = subs_count + 1
+      WHERE id = $2 AND EXISTS (SELECT 1 FROM inserted);
+      `,
+      [interestedId, interestingId]
+    );
 
-    res.status(200).json({ success: true});
+    res.status(200).json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false});
+    res.status(500).json({ success: false });
   }
 });
 
@@ -229,12 +313,28 @@ app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
   const { interestedId, interestingId } = req.params;
 
   try {
-   await db.query(` delete from interests where interested_id = $1 and  interesting_id=$2 `, [interestedId, interestingId]);
+    const result = await db.query(
+      `
+      WITH deleted AS (
+        DELETE FROM interests
+        WHERE interested_id = $1 AND interesting_id = $2
+        RETURNING interesting_id
+      )
+      UPDATE users
+      SET subs_count = subs_count - 1
+      WHERE id = $2 AND EXISTS (SELECT 1 FROM deleted);
+      `,
+      [interestedId, interestingId]
+    );
 
-    res.status(200).json({ success: true});
+    if (result.rowCount > 0) {
+      res.status(200).json({ success: true, message: 'Subscription removed and subs_count decremented.' });
+    } else {
+      res.status(200).json({ success: false, message: 'No such interest found or already removed.' });
+    }
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false});
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
@@ -853,18 +953,28 @@ app.post('/:userId/add/post/:snippetId', async (req, res) => {
 
 app.post('/:userId/add-post/', async (req, res) => {
   const userId = req.params.userId;
-  const { title, content, language , description , gitHubLink} = req.body;
+  const { title, content, language, description, gitHubLink } = req.body;
 
   try {
-    
-    if(!title.trim() || !content.trim() || !language.trim()) throw new Error('Please provide all the required fields');
+    if (!title.trim() || !content.trim() || !language.trim()) {
+      throw new Error('Please provide all the required fields');
+    }
 
-    // Add post to the database
     await db.query(
-      'INSERT INTO post (title, snippet, language, poster_id ,description , github_link) VALUES ($1 ,$2 ,$3 , $4 ,$5 ,$6);',
+      `
+      WITH inserted_post AS (
+        INSERT INTO post (title, snippet, language, poster_id, description, github_link)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+      )
+      UPDATE users
+      SET posts_count = posts_count + 1 ,  credit = credit + 20
+      WHERE id = $4;
+      `,
       [title, content, language, userId, description, gitHubLink]
     );
-    res.status(200).json({ message: 'Post Uploded Successfully' });
+
+    res.status(200).json({ message: 'Post Uploaded and Posts Count Updated Successfully' });
   } catch (err) {
     console.error(err.stack);
     res.status(500).json({ error: 'Server error' });
@@ -874,9 +984,9 @@ app.post('/:userId/add-post/', async (req, res) => {
 
 app.get('/published/posts/:userId/', async (req, res) => {
   const { userId } = req.params;
-  const page = parseInt(req.query.page) || 1;  // Default to page 1 if not provided
-  const limit = parseInt(req.query.limit) || 10;  // Default to 10 posts per page if not provided
-  const offset = (page - 1) * limit;  // Calculate offset
+  const page = parseInt(req.query.page) || 1; 
+  const limit = parseInt(req.query.limit) || 10;  
+  const offset = (page - 1) * limit; 
 
   try {
     const result = await db.query(`
@@ -911,7 +1021,6 @@ app.get('/published/posts/:userId/', async (req, res) => {
       LIMIT $2 OFFSET $3
     `, [userId, limit, offset]);
 
-    // Count total number of posts to calculate total pages
     const countResult = await db.query(`
       SELECT COUNT(*) FROM post WHERE poster_id = $1
     `, [userId]);
@@ -931,26 +1040,25 @@ app.get('/published/posts/:userId/', async (req, res) => {
 });
 
 
+  app.get("/profile/:id", async (req, res) => {
+    const userId = req.params.id;
 
-app.get("/profile/:id", async (req, res) => {
-  const userId = req.params.id;
+    try {
+      const user = await db.query(
+        "SELECT id, firstname, lastname, username, email, created_at, profile_pic , subs_count , posts_count , credit FROM users WHERE id = $1",
+        [userId]
+      );
 
-  try {
-    const user = await db.query(
-      "SELECT id, firstname, lastname, username, email, createdAt, profile_pic FROM users WHERE id = $1",
-      [userId]
-    );
+      if (user.rows.length === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
 
-    if (user.rows.length === 0) {
-      return res.status(404).json({ message: "User not found" });
+      res.status(200).json(user.rows[0]);
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      res.status(500).json({ message: "An error occurred while fetching the profile" });
     }
-
-    res.status(200).json(user.rows[0]);
-  } catch (error) {
-    console.error("Error fetching profile:", error);
-    res.status(500).json({ message: "An error occurred while fetching the profile" });
-  }
-});
+  });
 
 
 
