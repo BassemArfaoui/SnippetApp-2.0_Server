@@ -956,7 +956,7 @@ app.post('/:userId/add-post/', async (req, res) => {
   const { title, content, language, description, gitHubLink } = req.body;
 
   try {
-    if (!title.trim() || !content.trim() || !language.trim()) {
+    if (!title || !content || !language || !title.trim() || !content.trim() || !language.trim()) {
       throw new Error('Please provide all the required fields');
     }
 
@@ -980,6 +980,71 @@ app.post('/:userId/add-post/', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+app.put('/:userId/edit-post/:postId', async (req, res) => {
+  const userId = req.params.userId;
+  const postId = req.params.postId;
+  const { title, content, language, description, gitHubLink } = req.body;
+  console.log(req.body);
+
+  try {
+    if (!title || !content || !language || !title.trim() || !content.trim() || !language.trim()) {
+      throw new Error('Please provide all the required fields');
+    }
+
+    await db.query(
+      `
+        update post  set title= $1 , snippet=$2, language=$3, description=$4, github_link=$5
+        where id = $6 and poster_id = $7
+     
+      `,
+      [title, content, language,  description, gitHubLink , postId , userId]
+    );
+
+    res.status(200).json({ message: 'Post updated Successfully' });
+  } catch (err) {
+    console.error(err.stack);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/:userId/delete-post/:postId', async (req, res) => {
+  const postId = req.params.postId;
+  const userId = req.params.userId;
+
+  try {
+    // Begin transaction
+    await db.query('BEGIN');
+
+    // Query 1: Delete the post
+    const deleteResult = await db.query(
+      'DELETE FROM post WHERE id = $1 AND poster_id = $2 RETURNING id',
+      [postId, userId]
+    );
+
+    if (deleteResult.rowCount === 0) {
+      throw new Error('Post not found or unauthorized action');
+    }
+
+    // Query 2: Update the user's stats
+    await db.query(
+      'UPDATE users SET posts_count = posts_count - 1, credit = credit - 20 WHERE id = $1',
+      [userId]
+    );
+
+    // Commit transaction
+    await db.query('COMMIT');
+
+    res.status(200).json({ message: 'Post deleted and user stats updated successfully' });
+  } catch (err) {
+    // Rollback transaction on error
+    await db.query('ROLLBACK');
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
 
 
 app.get('/published/posts/:userId/', async (req, res) => {
