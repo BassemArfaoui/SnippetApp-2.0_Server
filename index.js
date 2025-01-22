@@ -523,35 +523,156 @@ app.get('/comments/:commentId/repliesCount', async (req, res) => {
 app.post('/add/comment', async (req, res) => {
   const { userId, postId, content, isReply, replyToId } = req.body;
 
+  if (!userId || !postId || !content) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+
   try {
-    if (!userId || !postId || !content) {
-      return res.status(400).json({ message: 'Missing required fields' });
-    }
+    await db.query('BEGIN');
 
     const insertCommentQuery = `
       INSERT INTO comments (user_id, post_id, content, is_reply, reply_to_id)
       VALUES ($1, $2, $3, $4, $5)
-      RETURNING * ;
+      RETURNING *;
     `;
-
     const result = await db.query(insertCommentQuery, [
       userId,
       postId,
       content,
-      isReply , 
-      replyToId, 
+      isReply,
+      replyToId,
     ]);
 
-    await db.query('UPDATE post SET comment_count = comment_count + 1 WHERE id = $1', [postId]);
+    await db.query(
+      'UPDATE post SET comment_count = comment_count + 1 WHERE id = $1',
+      [postId]
+    );
+
+    await db.query('COMMIT');
 
     const newComment = result.rows[0];
-
     res.status(201).json({ message: 'Comment added successfully', comment: newComment });
   } catch (error) {
+    await db.query('ROLLBACK');
     console.error('Error adding comment:', error);
     res.status(500).json({ message: 'Error adding comment' });
   }
 });
+
+
+app.delete('/:userId/delete-comment/:commentId', async (req, res) => {
+  const { userId, commentId } = req.params;
+
+  try {
+    if (!userId || !commentId) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    await db.query('BEGIN');
+
+    const getPostIdQuery = 'SELECT post_id FROM comments WHERE id = $1 AND user_id = $2';
+    const postResult = await db.query(getPostIdQuery, [commentId, userId]);
+
+    if (postResult.rows.length === 0) {
+      await db.query('ROLLBACK');
+      return res.status(404).json({ message: 'Comment not found or unauthorized' });
+    }
+
+    const postId = postResult.rows[0].post_id;
+
+    const getRepliesQuery = 'SELECT COUNT(*) FROM comments WHERE reply_to_id = $1 AND is_reply = true';
+    const repliesResult = await db.query(getRepliesQuery, [commentId]);
+    const repliesCount = parseInt(repliesResult.rows[0].count, 10);
+
+    const deleteLikesQuery = 'DELETE FROM comment_likes WHERE comment_id = $1';
+    const deleteDislikesQuery = 'DELETE FROM comment_dislikes WHERE comment_id = $1';
+
+    await db.query(deleteLikesQuery, [commentId]);
+    await db.query(deleteDislikesQuery, [commentId]);
+
+    const deleteLikesRepliesQuery = 'DELETE FROM comment_likes WHERE comment_id IN (SELECT id FROM comments WHERE reply_to_id = $1)';
+    const deleteDislikesRepliesQuery = 'DELETE FROM comment_dislikes WHERE comment_id IN (SELECT id FROM comments WHERE reply_to_id = $1)';
+    
+    await db.query(deleteLikesRepliesQuery, [commentId]);
+    await db.query(deleteDislikesRepliesQuery, [commentId]);
+
+    const deleteRepliesQuery = 'DELETE FROM comments WHERE reply_to_id = $1 AND is_reply = true';
+    await db.query(deleteRepliesQuery, [commentId]);
+
+    const deleteCommentQuery = 'DELETE FROM comments WHERE id = $1 AND user_id = $2';
+    await db.query(deleteCommentQuery, [commentId, userId]);
+
+    const decrementCommentCountQuery = `
+      UPDATE post 
+      SET comment_count = comment_count - $1
+      WHERE id = $2
+    `;
+    await db.query(decrementCommentCountQuery, [repliesCount + 1, postId]);
+
+    await db.query('COMMIT');
+
+    res.status(200).json({ message: 'Comment, replies, and associated likes/dislikes deleted successfully' });
+  } catch (error) {
+    await db.query('ROLLBACK');
+    console.error('Error deleting comment:', error);
+    res.status(500).json({ message: 'Error deleting comment' });
+  }
+});
+
+
+
+app.delete('/:userId/delete-reply/:commentId', async (req, res) => {
+  const { userId, commentId } = req.params;
+
+  try {
+    if (!userId || !commentId) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    await db.query('BEGIN');
+
+    const getPostIdQuery = `
+      SELECT post_id 
+      FROM comments 
+      WHERE id = $1 AND user_id = $2 AND is_reply = true
+    `;
+    const postResult = await db.query(getPostIdQuery, [commentId, userId]);
+
+    if (postResult.rows.length === 0) {
+      await db.query('ROLLBACK');
+      return res.status(404).json({ message: 'Reply not found or unauthorized' });
+    }
+
+    const postId = postResult.rows[0].post_id;
+
+    const deleteLikesQuery = 'DELETE FROM comment_likes WHERE comment_id = $1';
+    const deleteDislikesQuery = 'DELETE FROM comment_dislikes WHERE comment_id = $1';
+    await db.query(deleteLikesQuery, [commentId]);
+    await db.query(deleteDislikesQuery, [commentId]);
+
+    const deleteCommentQuery = `
+      DELETE FROM comments 
+      WHERE id = $1 AND user_id = $2 AND is_reply = true
+    `;
+    await db.query(deleteCommentQuery, [commentId, userId]);
+
+    const decrementCommentCountQuery = `
+      UPDATE post 
+      SET comment_count = comment_count - 1 
+      WHERE id = $1
+    `;
+    await db.query(decrementCommentCountQuery, [postId]);
+
+    await db.query('COMMIT');
+
+    res.status(200).json({ message: 'Reply and associated likes/dislikes deleted successfully' });
+  } catch (error) {
+    await db.query('ROLLBACK');
+    console.error('Error deleting reply:', error);
+    res.status(500).json({ message: 'Error deleting reply' });
+  }
+});
+
 
 
 app.get('/post/:id', async (req, res) => {
@@ -981,6 +1102,7 @@ app.post('/:userId/add-post/', async (req, res) => {
   }
 });
 
+
 app.put('/:userId/edit-post/:postId', async (req, res) => {
   const userId = req.params.userId;
   const postId = req.params.postId;
@@ -1008,15 +1130,14 @@ app.put('/:userId/edit-post/:postId', async (req, res) => {
   }
 });
 
+
 app.delete('/:userId/delete-post/:postId', async (req, res) => {
   const postId = req.params.postId;
   const userId = req.params.userId;
 
   try {
-    // Begin transaction
     await db.query('BEGIN');
 
-    // Query 1: Delete the post
     const deleteResult = await db.query(
       'DELETE FROM post WHERE id = $1 AND poster_id = $2 RETURNING id',
       [postId, userId]
@@ -1026,18 +1147,15 @@ app.delete('/:userId/delete-post/:postId', async (req, res) => {
       throw new Error('Post not found or unauthorized action');
     }
 
-    // Query 2: Update the user's stats
     await db.query(
       'UPDATE users SET posts_count = posts_count - 1, credit = credit - 20 WHERE id = $1',
       [userId]
     );
 
-    // Commit transaction
     await db.query('COMMIT');
 
     res.status(200).json({ message: 'Post deleted and user stats updated successfully' });
   } catch (err) {
-    // Rollback transaction on error
     await db.query('ROLLBACK');
     console.error(err.message);
     res.status(500).json({ error: 'Server error' });
