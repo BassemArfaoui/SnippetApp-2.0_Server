@@ -673,6 +673,33 @@ app.delete('/:userId/delete-reply/:commentId', async (req, res) => {
   }
 });
 
+app.put('/:userId/edit-comment/:commentId', async (req, res) => {
+  const {userId , commentId} = req.params ;
+  const { content } = req.body;
+
+  if (!userId || !commentId || !content) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+
+  try {
+ 
+
+    const editCommentQuery = `
+      update comments set content = $1  where id = $2 and user_id = $3 ;
+    `;
+    await db.query(editCommentQuery, [
+      content,
+      commentId,
+      userId,
+    ]);
+
+    res.status(201).json({ message: 'Comment updated successfully'});
+  } catch (error) {
+    console.error('Error updating comment:', error);
+    res.status(500).json({ message: 'Error updating comment' });
+  }
+});
+
 
 
 app.get('/post/:id', async (req, res) => {
