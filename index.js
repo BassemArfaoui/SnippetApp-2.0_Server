@@ -1161,14 +1161,14 @@ app.put('/:userId/edit-post/:postId', async (req, res) => {
   }
 });
 
-//todo : must be fixed to delete all post related data like comments , likes , dislikes , saves
-app.delete('/:userId/delete-post/:postId' , async (req, res) => {
+app.delete('/:userId/delete-post/:postId', async (req, res) => {
   const postId = req.params.postId;
   const userId = req.params.userId;
 
   try {
     await db.query('BEGIN');
 
+    // Step 1: Check if the post exists and belongs to the user
     const deleteResult = await db.query(
       'DELETE FROM post WHERE id = $1 AND poster_id = $2 RETURNING id',
       [postId, userId]
@@ -1178,14 +1178,51 @@ app.delete('/:userId/delete-post/:postId' , async (req, res) => {
       throw new Error('Post not found or unauthorized action');
     }
 
+    // Step 2: Delete all comments related to the post and their likes/dislikes
     await db.query(
-      'UPDATE users SET posts_count = posts_count - 1, credit = credit - 20 WHERE id = $1',
-      [userId]
+      `
+      DELETE FROM comment_likes 
+      WHERE comment_id IN (SELECT id FROM comments WHERE post_id = $1)
+      `,
+      [postId]
+    );
+
+    await db.query(
+      `
+      DELETE FROM comment_dislikes 
+      WHERE comment_id IN (SELECT id FROM comments WHERE post_id = $1)
+      `,
+      [postId]
+    );
+
+    await db.query('DELETE FROM comments WHERE post_id = $1', [postId]);
+
+    const { rows: likes } = await db.query(
+      'SELECT COUNT(*) AS like_count FROM likes WHERE post_id = $1',
+      [postId]
+    );
+    const { rows: dislikes } = await db.query(
+      'SELECT COUNT(*) AS dislike_count FROM dislikes WHERE post_id = $1',
+      [postId]
+    );
+
+    const likeCount = parseInt(likes[0].like_count, 10);
+    const dislikeCount = parseInt(dislikes[0].dislike_count, 10);
+
+    await db.query('DELETE FROM likes WHERE post_id = $1', [postId]);
+    await db.query('DELETE FROM dislikes WHERE post_id = $1', [postId]);
+
+    await db.query('DELETE FROM saves WHERE post_id = $1', [postId]);
+
+    const creditAdjustment = -20 - likeCount * 3 + dislikeCount; 
+    await db.query(
+      'UPDATE users SET posts_count = posts_count - 1, credit = credit + $1 WHERE id = $2',
+      [creditAdjustment, userId]
     );
 
     await db.query('COMMIT');
 
-    res.status(200).json({ message: 'Post deleted and user stats updated successfully' });
+    res.status(200).json({ message: 'Post and related data deleted successfully, user stats updated' });
   } catch (err) {
     await db.query('ROLLBACK');
     console.error(err.message);
@@ -1193,84 +1230,6 @@ app.delete('/:userId/delete-post/:postId' , async (req, res) => {
   }
 });
 
-
-// app.get('/published/posts/:userId/', async (req, res) => {
-//   const { userId } = req.params;
-//   const page = parseInt(req.query.page) || 1; 
-//   const limit = parseInt(req.query.limit) || 10;  
-//   const offset = (page - 1) * limit; 
-
-//   try {
-//     const result = await db.query(`
-//       SELECT p.*, 
-//              u.firstname AS "poster_firstname",
-//              u.lastname AS "poster_lastname",
-//              u.username AS "poster_username",
-//              CASE 
-//                WHEN l.post_id IS NOT NULL THEN TRUE 
-//                ELSE FALSE 
-//              END AS "isLiked",
-//              CASE 
-//                WHEN d.post_id IS NOT NULL THEN TRUE 
-//                ELSE FALSE 
-//              END AS "isDisliked",
-//              CASE 
-//                WHEN s.post_id IS NOT NULL THEN TRUE 
-//                ELSE FALSE 
-//              END AS "isSaved",
-//              CASE 
-//                WHEN i.interested_id IS NOT NULL THEN TRUE 
-//                ELSE FALSE 
-//              END AS "isInterested"
-//       FROM post p
-//       LEFT JOIN users u ON p.poster_id = u.id
-//       LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
-//       LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
-//       LEFT JOIN saves s ON s.post_id = p.id AND s.user_id = $1
-//       LEFT JOIN interests i ON i.interested_id = $1 AND i.interesting_id = p.poster_id
-//       WHERE p.poster_id = $1
-//       ORDER BY p.posted_at DESC
-//       LIMIT $2 OFFSET $3
-//     `, [userId, limit, offset]);
-
-//     const countResult = await db.query(`
-//       SELECT COUNT(*) FROM post WHERE poster_id = $1
-//     `, [userId]);
-
-//     const totalPosts = parseInt(countResult.rows[0].count, 10);
-//     const totalPages = Math.ceil(totalPosts / limit);
-
-//     res.json({
-//       totalPages,
-//       currentPage: page,
-//       posts: result.rows
-//     });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ error: 'An error occurred' });
-//   }
-// });
-
-
-  // app.get("/profile/:id", async (req, res) => {
-  //   const userId = req.params.id;
-
-  //   try {
-  //     const user = await db.query(
-  //       "SELECT id, firstname, lastname, username, email, created_at, profile_pic , subs_count , posts_count , credit FROM users WHERE id = $1",
-  //       [userId]
-  //     );
-
-  //     if (user.rows.length === 0) {
-  //       return res.status(404).json({ message: "User not found" });
-  //     }
-
-  //     res.status(200).json(user.rows[0]);
-  //   } catch (error) {
-  //     console.error("Error fetching profile:", error);
-  //     res.status(500).json({ message: "An error occurred while fetching the profile" });
-  //   }
-  // });
 
 
 app.get("/profile/:username", async (req, res) => {
