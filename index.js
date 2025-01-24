@@ -49,6 +49,7 @@ app.get('/:userId/posts', async (req, res) => {
              u.firstname AS "poster_firstname",
              u.lastname AS "poster_lastname",
              u.username AS "poster_username",
+             u.profile_pic AS "poster_profile_pic",
              CASE 
                WHEN l.post_id IS NOT NULL THEN TRUE 
                ELSE FALSE 
@@ -212,8 +213,6 @@ app.get('/dislike/:userId/:postId', async (req, res) => {
 });
 
 
-
-
 app.get('/undislike/:userId/:postId', async (req, res) => {
   const { userId, postId } = req.params;
 
@@ -359,6 +358,7 @@ app.get('/:postId/:userId/comments', async (req, res) => {
         c.commented_at,
         u.firstname,
         u.lastname,
+        u.username,
         u.profile_pic,
         COALESCE(cl_liked.id IS NOT NULL, false) AS liked,
         COALESCE(cl_disliked.id IS NOT NULL, false) AS disliked
@@ -464,6 +464,7 @@ app.get('/comments/:commentId/replies', async (req, res) => {
         c.commented_at,
         u.firstname,
         u.lastname,
+        u.username,
         u.profile_pic,
         COALESCE(cl_liked.id IS NOT NULL, false) AS liked,
         COALESCE(cl_disliked.id IS NOT NULL, false) AS disliked
@@ -620,7 +621,6 @@ app.delete('/:userId/delete-comment/:commentId', async (req, res) => {
 });
 
 
-
 app.delete('/:userId/delete-reply/:commentId', async (req, res) => {
   const { userId, commentId } = req.params;
 
@@ -673,6 +673,7 @@ app.delete('/:userId/delete-reply/:commentId', async (req, res) => {
   }
 });
 
+
 app.put('/:userId/edit-comment/:commentId', async (req, res) => {
   const {userId , commentId} = req.params ;
   const { content } = req.body;
@@ -699,7 +700,6 @@ app.put('/:userId/edit-comment/:commentId', async (req, res) => {
     res.status(500).json({ message: 'Error updating comment' });
   }
 });
-
 
 
 app.get('/post/:id', async (req, res) => {
@@ -741,6 +741,7 @@ app.get('/:userId/saved-posts', async (req, res) => {
              u.firstname AS "poster_firstname",
              u.lastname AS "poster_lastname",
              u.username AS "poster_username",
+             u.profile_pic AS "poster_profile_pic",
              CASE 
                WHEN l.post_id IS NOT NULL THEN TRUE 
                ELSE FALSE 
@@ -791,6 +792,7 @@ app.get('/:userId/search-saved-posts', async (req, res) => {
              u.firstname AS "poster_firstname",
              u.lastname AS "poster_lastname",
              u.username AS "poster_username",
+             u.profile_pic AS "poster_profile_pic",
              CASE 
                WHEN l.post_id IS NOT NULL THEN TRUE 
                ELSE FALSE 
@@ -840,6 +842,7 @@ app.get('/:userId/saved-posts/filter', async (req, res) => {
              u.firstname AS "poster_firstname",
              u.lastname AS "poster_lastname",
              u.username AS "poster_username",
+              u.profile_pic AS "poster_profile_pic",
              CASE 
                WHEN l.post_id IS NOT NULL THEN TRUE 
                ELSE FALSE 
@@ -943,6 +946,7 @@ app.get('/:userId/collection/posts/:collectionName', async (req, res) => {
              u.firstname AS "poster_firstname",
              u.lastname AS "poster_lastname",
              u.username AS "poster_username",
+              u.profile_pic AS "poster_profile_pic",
              CASE 
                WHEN l.post_id IS NOT NULL THEN TRUE 
                ELSE FALSE 
@@ -1157,8 +1161,8 @@ app.put('/:userId/edit-post/:postId', async (req, res) => {
   }
 });
 
-
-app.delete('/:userId/delete-post/:postId', async (req, res) => {
+//todo : must be fixed to delete all post related data like comments , likes , dislikes , saves
+app.delete('/:userId/delete-post/:postId' , async (req, res) => {
   const postId = req.params.postId;
   const userId = req.params.userId;
 
@@ -1190,85 +1194,200 @@ app.delete('/:userId/delete-post/:postId', async (req, res) => {
 });
 
 
+// app.get('/published/posts/:userId/', async (req, res) => {
+//   const { userId } = req.params;
+//   const page = parseInt(req.query.page) || 1; 
+//   const limit = parseInt(req.query.limit) || 10;  
+//   const offset = (page - 1) * limit; 
+
+//   try {
+//     const result = await db.query(`
+//       SELECT p.*, 
+//              u.firstname AS "poster_firstname",
+//              u.lastname AS "poster_lastname",
+//              u.username AS "poster_username",
+//              CASE 
+//                WHEN l.post_id IS NOT NULL THEN TRUE 
+//                ELSE FALSE 
+//              END AS "isLiked",
+//              CASE 
+//                WHEN d.post_id IS NOT NULL THEN TRUE 
+//                ELSE FALSE 
+//              END AS "isDisliked",
+//              CASE 
+//                WHEN s.post_id IS NOT NULL THEN TRUE 
+//                ELSE FALSE 
+//              END AS "isSaved",
+//              CASE 
+//                WHEN i.interested_id IS NOT NULL THEN TRUE 
+//                ELSE FALSE 
+//              END AS "isInterested"
+//       FROM post p
+//       LEFT JOIN users u ON p.poster_id = u.id
+//       LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
+//       LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
+//       LEFT JOIN saves s ON s.post_id = p.id AND s.user_id = $1
+//       LEFT JOIN interests i ON i.interested_id = $1 AND i.interesting_id = p.poster_id
+//       WHERE p.poster_id = $1
+//       ORDER BY p.posted_at DESC
+//       LIMIT $2 OFFSET $3
+//     `, [userId, limit, offset]);
+
+//     const countResult = await db.query(`
+//       SELECT COUNT(*) FROM post WHERE poster_id = $1
+//     `, [userId]);
+
+//     const totalPosts = parseInt(countResult.rows[0].count, 10);
+//     const totalPages = Math.ceil(totalPosts / limit);
+
+//     res.json({
+//       totalPages,
+//       currentPage: page,
+//       posts: result.rows
+//     });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: 'An error occurred' });
+//   }
+// });
 
 
-app.get('/published/posts/:userId/', async (req, res) => {
-  const { userId } = req.params;
-  const page = parseInt(req.query.page) || 1; 
-  const limit = parseInt(req.query.limit) || 10;  
-  const offset = (page - 1) * limit; 
+  // app.get("/profile/:id", async (req, res) => {
+  //   const userId = req.params.id;
 
-  try {
-    const result = await db.query(`
-      SELECT p.*, 
-             u.firstname AS "poster_firstname",
-             u.lastname AS "poster_lastname",
-             u.username AS "poster_username",
-             CASE 
-               WHEN l.post_id IS NOT NULL THEN TRUE 
-               ELSE FALSE 
-             END AS "isLiked",
-             CASE 
-               WHEN d.post_id IS NOT NULL THEN TRUE 
-               ELSE FALSE 
-             END AS "isDisliked",
-             CASE 
-               WHEN s.post_id IS NOT NULL THEN TRUE 
-               ELSE FALSE 
-             END AS "isSaved",
-             CASE 
-               WHEN i.interested_id IS NOT NULL THEN TRUE 
-               ELSE FALSE 
-             END AS "isInterested"
-      FROM post p
-      LEFT JOIN users u ON p.poster_id = u.id
-      LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1
-      LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1
-      LEFT JOIN saves s ON s.post_id = p.id AND s.user_id = $1
-      LEFT JOIN interests i ON i.interested_id = $1 AND i.interesting_id = p.poster_id
-      WHERE p.poster_id = $1
-      ORDER BY p.posted_at DESC
-      LIMIT $2 OFFSET $3
-    `, [userId, limit, offset]);
+  //   try {
+  //     const user = await db.query(
+  //       "SELECT id, firstname, lastname, username, email, created_at, profile_pic , subs_count , posts_count , credit FROM users WHERE id = $1",
+  //       [userId]
+  //     );
 
-    const countResult = await db.query(`
-      SELECT COUNT(*) FROM post WHERE poster_id = $1
-    `, [userId]);
+  //     if (user.rows.length === 0) {
+  //       return res.status(404).json({ message: "User not found" });
+  //     }
 
-    const totalPosts = parseInt(countResult.rows[0].count, 10);
-    const totalPages = Math.ceil(totalPosts / limit);
-
-    res.json({
-      totalPages,
-      currentPage: page,
-      posts: result.rows
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'An error occurred' });
-  }
-});
+  //     res.status(200).json(user.rows[0]);
+  //   } catch (error) {
+  //     console.error("Error fetching profile:", error);
+  //     res.status(500).json({ message: "An error occurred while fetching the profile" });
+  //   }
+  // });
 
 
-  app.get("/profile/:id", async (req, res) => {
-    const userId = req.params.id;
-
+app.get("/profile/:username", async (req, res) => {
+        const username = req.params.username;
+    const uid = req.query.uid;
+  
+    if (!uid) {
+      return res.status(400).json({ message: "User ID (uid) is required as a query parameter" });
+    }
+  
     try {
-      const user = await db.query(
-        "SELECT id, firstname, lastname, username, email, created_at, profile_pic , subs_count , posts_count , credit FROM users WHERE id = $1",
-        [userId]
-      );
-
+      const userQuery = `
+        SELECT id, firstname, lastname, username, email, created_at, profile_pic, subs_count, posts_count, credit 
+        FROM users 
+        WHERE username = $1
+      `;
+      const user = await db.query(userQuery, [username]);
+  
       if (user.rows.length === 0) {
         return res.status(404).json({ message: "User not found" });
       }
-
-      res.status(200).json(user.rows[0]);
+  
+      const profile = user.rows[0]; 
+  
+      const subscriptionQuery = `
+        SELECT * 
+        FROM interests 
+        WHERE interested_id = $1 AND interesting_id = $2
+      `;
+      const subscription = await db.query(subscriptionQuery, [uid, profile.id]);
+  
+      const is_subscribed = subscription.rows.length > 0;
+  
+      res.status(200).json({
+        ...profile,
+        is_subscribed,
+      });
     } catch (error) {
       console.error("Error fetching profile:", error);
       res.status(500).json({ message: "An error occurred while fetching the profile" });
     }
   });
+  
+
+app.get('/published/posts/:username/', async (req, res) => {
+    const { username } = req.params;
+    const uid = parseInt(req.query.uid); 
+    const page = parseInt(req.query.page) || 1; 
+    const limit = parseInt(req.query.limit) || 10;  
+    const offset = (page - 1) * limit; 
+  
+    if (!uid) {
+      return res.status(400).json({ error: 'Missing logged-in user ID (uid)' });
+    }
+  
+    try {
+      const userResult = await db.query(`
+        SELECT id FROM users WHERE username = $1
+      `, [username]);
+  
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+  
+      const profileUserId = userResult.rows[0].id;
+  
+      const result = await db.query(`
+        SELECT p.*, 
+               u.firstname AS "poster_firstname",
+               u.lastname AS "poster_lastname",
+               u.username AS "poster_username",
+                u.profile_pic AS "poster_profile_pic",
+               CASE 
+                 WHEN l.post_id IS NOT NULL THEN TRUE 
+                 ELSE FALSE 
+               END AS "isLiked",
+               CASE 
+                 WHEN d.post_id IS NOT NULL THEN TRUE 
+                 ELSE FALSE 
+               END AS "isDisliked",
+               CASE 
+                 WHEN s.post_id IS NOT NULL THEN TRUE 
+                 ELSE FALSE 
+               END AS "isSaved",
+               CASE 
+                 WHEN i.interested_id IS NOT NULL THEN TRUE 
+                 ELSE FALSE 
+               END AS "isInterested"
+        FROM post p
+        LEFT JOIN users u ON p.poster_id = u.id
+        LEFT JOIN likes l ON l.post_id = p.id AND l.user_id = $1 -- Use logged-in user's ID
+        LEFT JOIN dislikes d ON d.post_id = p.id AND d.user_id = $1 -- Use logged-in user's ID
+        LEFT JOIN saves s ON s.post_id = p.id AND s.user_id = $1 -- Use logged-in user's ID
+        LEFT JOIN interests i ON i.interested_id = $1 AND i.interesting_id = p.poster_id -- Use logged-in user's ID
+        WHERE p.poster_id = $2
+        ORDER BY p.posted_at DESC
+        LIMIT $3 OFFSET $4
+      `, [uid, profileUserId, limit, offset]);
+  
+      const countResult = await db.query(`
+        SELECT COUNT(*) FROM post WHERE poster_id = $1
+      `, [profileUserId]);
+  
+      const totalPosts = parseInt(countResult.rows[0].count, 10);
+      const totalPages = Math.ceil(totalPosts / limit);
+  
+      res.json({
+        totalPages,
+        currentPage: page,
+        posts: result.rows
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'An error occurred' });
+    }
+  });
+  
 
 
 
