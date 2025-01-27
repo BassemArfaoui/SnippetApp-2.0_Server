@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon app.js" ,
+    "auth": "nodemon auth.js"
   },
   "keywords": [],
   "author": "",
