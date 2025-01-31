@@ -3,6 +3,9 @@ import bodyParser from "body-parser";
 import pg from "pg";
 import dotenv from "dotenv"
 import cors from 'cors';
+import bcrypt from "bcrypt"
+import jwt from "jsonwebtoken";
+
 
 
 const app = express();
@@ -31,12 +34,224 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 
+const saltRounds =10 ;
+const jwtSecret = 'little secret'
+
+
+
+//functions
+async function isEmailUsed(email)
+{
+  const result= await db.query('select * from users where email=$1', [email]);
+  return result.rows.length > 0;
+}
+
+
+async function addUser(name, email, password , firstname , lastname)
+{
+  const result= await db.query('insert into users (username, email, password, firstname, lastname) values ($1, $2, $3 , $4 , $5) returning *', [name, email, password , firstname , lastname]);
+  return result.rows[0];
+}
+
+function isValidUsername(username) {
+  const regex = /^[a-zA-Z0-9._]+$/;
+  const isValidLength = username.length >= 6;
+  const isValidCharacters = regex.test(username);
+  return isValidLength && isValidCharacters;
+}
+
+
+function isStrongPassword(password) {
+  const hasLowercase = /[a-z]/.test(password);
+  const hasUppercase = /[A-Z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  return hasLowercase && hasUppercase && hasNumber && password.length >= 8;
+}
+
+
+async function getUserByEmail(email)
+{
+  const result= await db.query('select * from users where email=$1', [email]);
+  return result.rows;
+}
+
+async function updateTokenById(id,token)
+{
+  const result= await db.query('update users set jwt_token=$1 where id=$2 returning jwt_token', [token, id]);
+  return result.rows[0].token;
+}
+
+
+
+//custom middlewares
+async function checkToken(req,res,next)
+{
+  const bearer = req.headers['authorization'];
+  if (!bearer) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const token=bearer.split(' ')[1];
+    req.token=token;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+
+
 
 
 
 app.get('/', async (req,res)=>{
   res.send('hello')
 });
+
+
+//auth 
+app.post('/register',async (req, res)=>
+{ let alerts = [] ;
+  try
+  {
+    const {username, email, password ,firstname , lastname }= req.body;
+
+    console.log(req.body)
+
+
+    if(!username || !email || !password || !firstname || !lastname)
+    {
+      alerts.push({error:'some fields are missing'})
+    }
+
+    if(await isEmailUsed(email))
+    {
+      alerts.push({error:"Email already used"})
+    }
+
+    if(!isValidUsername(username))
+    {
+      alerts.push({error:'Invalid username : Username must be 6 charachters long and Can only contain Letters , Numbers , Underscores (_) and Dots (.)'})
+    }
+
+    
+    if(!isStrongPassword(password))
+    {
+      alerts.push({error:'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number'})
+    }
+
+
+    if(alerts.length>0)
+    {
+      res.status(401).json(alerts);
+    }
+    else
+    {
+    //   const code=generateCode(6);
+    //   const ejsFilePath = path.join(process.cwd(),'views', 'emails' ,'verifCodeEmail.ejs');
+    //   const html = await ejs.renderFile(ejsFilePath, { name: name , code : code});
+    //   const options = {
+    //     from: `SnippetApp Team <${process.env.MAIL}>`,
+    //     to: email,
+    //     subject: 'SnippetApp Email Verification',
+    //     html:html};
+
+        try
+        { 
+          const hash= await bcrypt.hash(password, saltRounds);
+          const user= await addUser( username, email, hash , firstname , lastname);
+          // const info =await transporter.sendMail(options);
+          // console.log('Email sent: ' + info.response);
+          alerts.push({test:true , user:user})
+          res.status(200).json(alerts);
+        }
+        catch(err)
+        {
+          throw err;
+        }
+
+        }
+    
+
+
+  }
+  catch(err)
+  {
+    alerts=[{message:'Inertnal Server Error'}];
+    console.log(err);
+    res.status(500).json(alerts);
+  }
+})
+
+
+app.post('/login',async (req, res)=>
+{
+  try
+  {const {email, password}= req.body;
+  console.log(email, password);
+  const user_arr= await getUserByEmail(email);
+  if(user_arr.length===0)
+  {
+    res.json({error:'Wrong Email or Password'})
+  }else
+  {
+    // const isVerified=user_arr[0].is_verified;
+    if(1==50)
+    {
+      res.json({error:'Email not verified'})
+    }else
+    {
+      const isPasswordCorrect=await bcrypt.compare(password, user_arr[0].password);
+      if(isPasswordCorrect)
+      {
+        const payload={id:user_arr[0].id,username : user_arr[0].username, email:user_arr[0].email};
+        console.log(payload);
+        const token=jwt.sign(payload, jwtSecret, {expiresIn:'1d'});
+        await updateTokenById(user_arr[0].id, token);
+        res.json({success:true , token:token,user:{id:user_arr[0].id,username:user_arr[0].username , email:user_arr[0].email}});
+      }else
+      {
+        res.json({error:'Wrong Email or Password'})
+      }
+    }
+  }
+
+  }
+  catch(err)
+  {
+    console.log(err);
+    res.status(500).json({error:'Internal Server Error'})
+  }
+})
+
+app.get('/check/token',checkToken,(req,res)=>{
+  try {
+    const token = req.token;
+    const decoded = jwt.verify(token, jwtSecret);
+    res.status(200).json({ valid: true });
+  } catch (err) {
+    res.json({ valid: false });
+  }
+})
+
+
+app.post('/email-used',async (req, res)=>
+{
+  try
+  {const {email}= req.body;
+  console.log(email);
+  const user_arr= await getUserByEmail(email);
+  
+  res.json({is_email_used : user_arr.length >0 })
+
+  }
+  catch(err)
+  {
+    console.log(err);
+    res.status(500).json({error:'Internal Server Error'})
+  }
+})
 
 
 app.get('/:userId/posts', async (req, res) => {
@@ -707,7 +922,7 @@ app.get('/post/:id', async (req, res) => {
 
   try {
     const queryText = `
-      SELECT p.*, u.username, u.firstname, u.lastname 
+      SELECT p.*, u.username, u.firstname, u.lastname , u.profile_pic
       FROM post p
       JOIN users u ON p.poster_id = u.id
       WHERE p.id = $1
