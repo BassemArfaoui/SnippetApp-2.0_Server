@@ -7,6 +7,8 @@ import jwt from "jsonwebtoken";
 import upload from "./config/cloudinary.mjs";
 import db from "./config/postgres.mjs";
 import checkToken from "./middlewares/checkToken.mjs";
+import { addPostToAlgolia , updatePostInAlgolia , deletePostFromAlgolia , addUserToAlgolia} from './config/algolia.mjs'; 
+
 
 
 
@@ -99,78 +101,77 @@ app.get('/', async (req,res)=>{
 
 
 //auth 
-app.post('/register',async (req, res)=>
-{ let alerts = [] ;
-  try
-  {
-    const {username, email, password ,firstname , lastname }= req.body;
+app.post('/register', async (req, res) => {
+  let alerts = [];
+  try {
+    const { username, email, password, firstname, lastname } = req.body;
 
-    console.log(req.body)
+    console.log(req.body);
 
-
-    if(!username || !email || !password || !firstname || !lastname)
-    {
-      alerts.push({error:'some fields are missing'})
+    if (!username || !email || !password || !firstname || !lastname) {
+      alerts.push({ error: 'Some fields are missing' });
     }
 
-    if(await isUsernameUsed(username))
-    {
-      alerts.push({error:"Username already used"})
+    if (await isUsernameUsed(username)) {
+      alerts.push({ error: 'Username already used' });
     }
 
-    if(!isValidUsername(username))
-    {
-      alerts.push({error:'Invalid username : Username must be 6 charachters long and Can only contain Letters , Numbers , Underscores (_) and Dots (.)'})
+    if (!isValidUsername(username)) {
+      alerts.push({
+        error:
+          'Invalid username: Username must be 6 characters long and can only contain letters, numbers, underscores (_) and dots (.)',
+      });
     }
 
-    
-    if(!isStrongPassword(password))
-    {
-      alerts.push({error:'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number'})
+    if (!isStrongPassword(password)) {
+      alerts.push({
+        error:
+          'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number',
+      });
     }
 
+    if (alerts.length > 0) {
+      return res.status(401).json(alerts);
+    } else {
+      // const code = generateCode(6);
+      // const ejsFilePath = path.join(process.cwd(), 'views', 'emails', 'verifCodeEmail.ejs');
+      // const html = await ejs.renderFile(ejsFilePath, { name: name , code : code});
+      // const options = {
+      //   from: `SnippetApp Team <${process.env.MAIL}>`,
+      //   to: email,
+      //   subject: 'SnippetApp Email Verification',
+      //   html: html
+      // };
 
-    if(alerts.length>0)
-    {
-      res.status(401).json(alerts);
+      try {
+        await db.query('BEGIN');
+
+        const hash = await bcrypt.hash(password, saltRounds);
+
+        const user = await addUser(username, email, hash, firstname, lastname);
+
+        await addUserToAlgolia(user);
+
+        await db.query('COMMIT');
+
+        // Send email verification (commented as per original code)
+        // const info = await transporter.sendMail(options);
+        // console.log('Email sent: ' + info.response);
+
+        alerts.push({ success: true, user: user });
+        return res.status(200).json(alerts[0]);
+      } catch (err) {
+        await db.query('ROLLBACK');
+        throw err;
+      }
     }
-    else
-    {
-    //   const code=generateCode(6);
-    //   const ejsFilePath = path.join(process.cwd(),'views', 'emails' ,'verifCodeEmail.ejs');
-    //   const html = await ejs.renderFile(ejsFilePath, { name: name , code : code});
-    //   const options = {
-    //     from: `SnippetApp Team <${process.env.MAIL}>`,
-    //     to: email,
-    //     subject: 'SnippetApp Email Verification',
-    //     html:html};
-
-        try
-        { 
-          const hash= await bcrypt.hash(password, saltRounds);
-          const user= await addUser( username, email, hash , firstname , lastname);
-          // const info =await transporter.sendMail(options);
-          // console.log('Email sent: ' + info.response);
-          alerts.push({success  :true , user:user})
-          res.status(200).json(alerts[0]);
-        }
-        catch(err)
-        {
-          throw err;
-        }
-
-        }
-    
-
-
-  }
-  catch(err)
-  {
-    alerts=[{message:'Inertnal Server Error'}];
+  } catch (err) {
+    alerts = [{ message: 'Internal Server Error' }];
     console.log(err);
-    res.status(500).json(alerts);
+    return res.status(500).json(alerts);
   }
-})
+});
+
 
 
 app.post('/login',async (req, res)=>
@@ -1324,26 +1325,37 @@ app.post('/:userId/add/snippet', async (req, res) => {
 
 app.post('/:userId/add/post/:snippetId', async (req, res) => {
   const userId = req.params.userId;
-  const snippetId=req.params.snippetId;
-  const { title, content, language , description , gitHubLink} = req.body;
+  const snippetId = req.params.snippetId;
+  const { title, content, language, description, gitHubLink } = req.body;
 
   try {
-    
-    if(!title || !content || !language || !title.trim() || !content.trim() || !language.trim()) throw new Error('Please provide all the required fields');
+    if (!title || !content || !language || !title.trim() || !content.trim() || !language.trim()) {
+      throw new Error('Please provide all the required fields');
+    }
 
-    // Add snippet to the database
-    await db.query(
-      'INSERT INTO post (title, snippet, language, poster_id ,description , github_link) VALUES ($1 ,$2 ,$3 , $4 ,$5 ,$6);',
+    await db.query('BEGIN');
+
+    const result = await db.query(
+      `INSERT INTO post (title, snippet, language, poster_id, description, github_link) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
+       RETURNING id, title, snippet, language, description, github_link, posted_at;`,
       [title, content, language, userId, description, gitHubLink]
     );
 
-    await db.query('update snippet set is_posted = true where id=$1', [snippetId]);
+    const newPost = result.rows[0];
 
-    res.status(200).json({ message: 'Post Uploded Successfully' });
+    await db.query('UPDATE snippet SET is_posted = true WHERE id = $1;', [snippetId]);
+
+    await addPostToAlgolia(newPost);
+
+    await db.query('COMMIT'); 
+
+    res.status(200).json({ message: 'Post uploaded successfully', post: newPost });
   } catch (err) {
+    await db.query('ROLLBACK'); 
     console.error(err.stack);
     res.status(500).json({ error: 'Server error' });
-  }
+  } 
 });
 
 
@@ -1356,54 +1368,124 @@ app.post('/:userId/add-post/', async (req, res) => {
       throw new Error('Please provide all the required fields');
     }
 
-    await db.query(
+
+    const result = await db.query(
       `
       WITH inserted_post AS (
         INSERT INTO post (title, snippet, language, poster_id, description, github_link)
         VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id
+        RETURNING id, title, snippet, language, description, github_link, posted_at
+      ),
+      update_user AS (
+        UPDATE users
+        SET posts_count = posts_count + 1, credit = credit + 20
+        WHERE id = $4
       )
-      UPDATE users
-      SET posts_count = posts_count + 1 ,  credit = credit + 20
-      WHERE id = $4;
+      SELECT * FROM inserted_post;
       `,
       [title, content, language, userId, description, gitHubLink]
     );
 
-    res.status(200).json({ message: 'Post Uploaded and Posts Count Updated Successfully' });
+    const newPost = result.rows[0];  
+
+    await addPostToAlgolia(newPost);
+
+    res.status(200).json({ message: 'Post uploaded and posts count updated successfully', post: newPost });
   } catch (err) {
     console.error(err.stack);
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+
+app.get('/sync-posts', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, title, snippet, language, description, github_link, posted_at FROM post order by id`
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ message: 'No posts found in the database' });
+    }
+
+    for (const post of rows) {
+      await addPostToAlgolia(post);
+      console.log(`Successfully uploaded post with ID ${post.id} to Algolia.`);
+    }
+
+    res.status(200).json({ message: 'All posts have been synchronized and uploaded to Algolia' });
+  } catch (err) {
+    console.error(err.stack);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
+app.get('/sync-users', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, username, firstname, lastname, profile_pic  , created_at FROM users ORDER BY id`
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ message: 'No users found in the database' });
+    }
+
+    for (const user of rows) {
+     
+      await addUserToAlgolia(user);
+      console.log(`Successfully uploaded user with ID ${user.id} to Algolia.`);
+    }
+
+    res.status(200).json({ message: 'All users have been synchronized and uploaded to Algolia' });
+  } catch (err) {
+    console.error(err.stack);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 
 
 app.put('/:userId/edit-post/:postId', async (req, res) => {
   const userId = req.params.userId;
   const postId = req.params.postId;
   const { title, content, language, description, gitHubLink } = req.body;
-  console.log(req.body);
 
   try {
     if (!title || !content || !language || !title.trim() || !content.trim() || !language.trim()) {
       throw new Error('Please provide all the required fields');
     }
 
-    await db.query(
+    await db.query('BEGIN');
+    
+    const result = await db.query(
       `
-        update post  set title= $1 , snippet=$2, language=$3, description=$4, github_link=$5
-        where id = $6 and poster_id = $7
-     
+      UPDATE post  
+      SET title = $1, snippet = $2, language = $3, description = $4, github_link = $5
+      WHERE id = $6 AND poster_id = $7
+      RETURNING id, title, snippet, language, description, github_link, posted_at
       `,
-      [title, content, language,  description, gitHubLink , postId , userId]
+      [title, content, language, description, gitHubLink, postId, userId]
     );
 
-    res.status(200).json({ message: 'Post updated Successfully' });
+    if (result.rows.length === 0) {
+      throw new Error('Post not found or you do not have permission to edit it.');
+    }
+
+    const updatedPost = result.rows[0];
+
+    await updatePostInAlgolia(updatedPost);
+
+    await db.query('COMMIT');
+
+    res.status(200).json({ message: 'Post updated successfully', post: updatedPost });
   } catch (err) {
+    await db.query('ROLLBACK');
     console.error(err.stack);
     res.status(500).json({ error: 'Server error' });
   }
 });
+
 
 app.delete('/:userId/delete-post/:postId', async (req, res) => {
   const postId = req.params.postId;
@@ -1424,18 +1506,12 @@ app.delete('/:userId/delete-post/:postId', async (req, res) => {
 
     // Step 2: Delete all comments related to the post and their likes/dislikes
     await db.query(
-      `
-      DELETE FROM comment_likes 
-      WHERE comment_id IN (SELECT id FROM comments WHERE post_id = $1)
-      `,
+      `DELETE FROM comment_likes WHERE comment_id IN (SELECT id FROM comments WHERE post_id = $1)`,
       [postId]
     );
 
     await db.query(
-      `
-      DELETE FROM comment_dislikes 
-      WHERE comment_id IN (SELECT id FROM comments WHERE post_id = $1)
-      `,
+      `DELETE FROM comment_dislikes WHERE comment_id IN (SELECT id FROM comments WHERE post_id = $1)`,
       [postId]
     );
 
@@ -1458,11 +1534,13 @@ app.delete('/:userId/delete-post/:postId', async (req, res) => {
 
     await db.query('DELETE FROM saves WHERE post_id = $1', [postId]);
 
-    const creditAdjustment = -20 - likeCount * 3 + dislikeCount; 
+    const creditAdjustment = -20 - likeCount * 3 + dislikeCount;
     await db.query(
       'UPDATE users SET posts_count = posts_count - 1, credit = credit + $1 WHERE id = $2',
       [creditAdjustment, userId]
     );
+
+    await deletePostFromAlgolia(postId);
 
     await db.query('COMMIT');
 
@@ -1473,7 +1551,6 @@ app.delete('/:userId/delete-post/:postId', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
 
 
 app.get("/profile/:username", async (req, res) => {
