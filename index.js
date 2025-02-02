@@ -1346,6 +1346,8 @@ app.post('/:userId/add/post/:snippetId', async (req, res) => {
 
     await db.query('UPDATE snippet SET is_posted = true WHERE id = $1;', [snippetId]);
 
+    await db.query('UPDATE users SET posts_count = posts_count + 1, credit = credit + 20 WHERE id = $1',[userId])
+
     await addPostToAlgolia(newPost);
 
     await db.query('COMMIT'); 
