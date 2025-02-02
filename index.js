@@ -1,27 +1,29 @@
 import express from "express";
 import bodyParser from "body-parser";
-import pg from "pg";
 import dotenv from "dotenv"
 import cors from 'cors';
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken";
+import upload from "./config/cloudinary.mjs";
+import db from "./config/postgres.mjs";
+import checkToken from "./middlewares/checkToken.mjs";
 
 
 
+
+
+//initialize
 const app = express();
-const port = 4000;
 dotenv.config();
-
-
-//database connection
-const db = new pg.Client({
-  user:process.env.DB_user,
-  host:process.env.DB_host,
-  database:process.env.Db_name,
-  password:process.env.PG_password, 
-  port:process.env.port
-});
 db.connect();
+
+
+
+//constants
+const port = 4000;
+const saltRounds =10 ;
+const jwtSecret = process.env.JWT_SECRET;
+
 
 
 //middlewares
@@ -34,10 +36,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 
-const saltRounds =10 ;
-const jwtSecret = 'little secret'
-
-
 
 //functions
 async function isEmailUsed(email)
@@ -46,6 +44,11 @@ async function isEmailUsed(email)
   return result.rows.length > 0;
 }
 
+async function isUsernameUsed(username)
+{
+  const result= await db.query('select * from users where username=$1', [username]);
+  return result.rows.length > 0;
+}
 
 async function addUser(name, email, password , firstname , lastname)
 {
@@ -60,14 +63,12 @@ function isValidUsername(username) {
   return isValidLength && isValidCharacters;
 }
 
-
 function isStrongPassword(password) {
   const hasLowercase = /[a-z]/.test(password);
   const hasUppercase = /[A-Z]/.test(password);
   const hasNumber = /\d/.test(password);
   return hasLowercase && hasUppercase && hasNumber && password.length >= 8;
 }
-
 
 async function getUserByEmail(email)
 {
@@ -81,30 +82,17 @@ async function updateTokenById(id,token)
   return result.rows[0].token;
 }
 
-
-
-//custom middlewares
-async function checkToken(req,res,next)
+async function resetPassword(password,id)
 {
-  const bearer = req.headers['authorization'];
-  if (!bearer) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  try {
-    const token=bearer.split(' ')[1];
-    req.token=token;
-    next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
+  const result=db.query(`update  users set password = $1 where id=$2 returning * `,[password , id])
+  return result.rows;
 }
 
 
 
 
 
-
+//routes
 app.get('/', async (req,res)=>{
   res.send('hello')
 });
@@ -125,9 +113,9 @@ app.post('/register',async (req, res)=>
       alerts.push({error:'some fields are missing'})
     }
 
-    if(await isEmailUsed(email))
+    if(await isUsernameUsed(username))
     {
-      alerts.push({error:"Email already used"})
+      alerts.push({error:"Username already used"})
     }
 
     if(!isValidUsername(username))
@@ -163,8 +151,8 @@ app.post('/register',async (req, res)=>
           const user= await addUser( username, email, hash , firstname , lastname);
           // const info =await transporter.sendMail(options);
           // console.log('Email sent: ' + info.response);
-          alerts.push({test:true , user:user})
-          res.status(200).json(alerts);
+          alerts.push({success  :true , user:user})
+          res.status(200).json(alerts[0]);
         }
         catch(err)
         {
@@ -235,15 +223,14 @@ app.get('/check/token',checkToken,(req,res)=>{
   }
 })
 
-
-app.post('/email-used',async (req, res)=>
+app.post('/username-used',async (req, res)=>
 {
   try
-  {const {email}= req.body;
-  console.log(email);
-  const user_arr= await getUserByEmail(email);
+  {const {username}= req.body;
+  console.log(username);
+  const is_username_used = await isUsernameUsed(username);
   
-  res.json({is_email_used : user_arr.length >0 })
+  res.json({ is_username_used : is_username_used })
 
   }
   catch(err)
@@ -253,7 +240,49 @@ app.post('/email-used',async (req, res)=>
   }
 })
 
+app.post('/reset/password/:id' ,async (req, res)=>
+{
+  try
+  {
+    const password= req.body.password;
+    const id= req.params.id;
+    if(password)
+   {
+    const hash=bcrypt.hashSync(password, saltRounds);
+    const result=await resetPassword( hash,id);
+    res.json({success:true});
+  }
+  else 
+  {
+    throw new Error('Invalid Password')
+  }
 
+  }
+  catch(err)
+  {
+    console.log(err.message);
+    res.status(500).json({error:err.message || 'Invalid or Expired Token'})
+  }
+})
+
+
+
+//cloud
+app.post("/:userId/upload", upload.single("profilePic"), async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const imageUrl = req.file.path; 
+    await db.query("UPDATE users SET profile_pic = $1 WHERE id = $2", [imageUrl, userId]);
+
+    res.json({ success: true, imageUrl }); 
+  } catch (error) {
+    console.error("Error uploading image:", error);
+    res.status(500).json({ success: false, message: "Upload failed" });
+  }
+});
+
+
+//services
 app.get('/:userId/posts', async (req, res) => {
   const { userId } = req.params;
   const limit = parseInt(req.query.limit) || 10;
@@ -1570,7 +1599,7 @@ app.get('/published/posts/:username/', async (req, res) => {
 
 
 
-
+//serve
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
 });
