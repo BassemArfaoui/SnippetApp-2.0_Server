@@ -1,5 +1,6 @@
 .hintrc
 
+/config/firebaseAdmin.json
 
 # Logs
 logs

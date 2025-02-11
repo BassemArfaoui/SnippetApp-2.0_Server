@@ -21,6 +21,7 @@ cloudinary.config({
     params: {
       folder: "profile_pictures",  
       allowed_formats: ["jpg", "png", "jpeg", "svg" ],  
+
     },
   });
   const upload = multer({ storage });

@@ -8,8 +8,7 @@ import upload from "./config/cloudinary.mjs";
 import db from "./config/postgres.mjs";
 import checkToken from "./middlewares/checkToken.mjs";
 import { addPostToAlgolia , updatePostInAlgolia , deletePostFromAlgolia , addUserToAlgolia} from './config/algolia.mjs'; 
-
-
+import googleClient from "./config/goolgle-oauth.mjs"
 
 
 
@@ -33,10 +32,9 @@ app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 const corsOptions = {
-  origin: ['http://localhost:3000','http://localhost:3001' ]
+  origin: ['http://localhost:3000','http://localhost:3001' , "http://192.168.56.1:3000"]
 };
-app.use(cors(corsOptions));
-
+app.use(cors(corsOptions))
 
 
 //functions
@@ -59,7 +57,7 @@ async function addUser(name, email, password , firstname , lastname)
 }
 
 function isValidUsername(username) {
-  const regex = /^[a-zA-Z0-9._]+$/;
+  const regex = /^[a-zA-Z0-9._-]+$/;
   const isValidLength = username.length >= 6;
   const isValidCharacters = regex.test(username);
   return isValidLength && isValidCharacters;
@@ -89,6 +87,11 @@ async function resetPassword(password,id)
   const result=db.query(`update  users set password = $1 where id=$2 returning * `,[password , id])
   return result.rows;
 }
+
+const generateUsername = (email) => {
+  const username = email.split('@')[0]; 
+  return username + '';  
+};
 
 
 
@@ -173,7 +176,6 @@ app.post('/register', async (req, res) => {
 });
 
 
-
 app.post('/login',async (req, res)=>
 {
   try
@@ -214,15 +216,19 @@ app.post('/login',async (req, res)=>
   }
 })
 
+
 app.get('/check/token',checkToken,(req,res)=>{
   try {
     const token = req.token;
     const decoded = jwt.verify(token, jwtSecret);
     res.status(200).json({ valid: true });
   } catch (err) {
+    console.error('error validating token')
     res.json({ valid: false });
   }
 })
+
+
 
 app.post('/username-used',async (req, res)=>
 {
@@ -265,6 +271,84 @@ app.post('/reset/password/:id' ,async (req, res)=>
     res.status(500).json({error:err.message || 'Invalid or Expired Token'})
   }
 })
+
+
+//oauth
+
+// Function to handle Google login
+app.post('/google-login', async (req, res) => {
+  const { credential } = req.body;
+  console.log(credential)
+  if (!credential) {
+    return res.status(400).json({ message: 'No credential provided' });
+  }
+
+  try {
+    // Verify and decode the Google ID token
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+    const googleId = payload.sub; // Google ID (unique identifier)
+    const email = payload.email;
+    const firstName = payload.given_name;
+    const lastName = payload.family_name;
+    const profilePic = payload.picture;
+
+    // Check if the user exists in the database using the Google ID
+    const existingUser = await db.query('SELECT * FROM users WHERE google_id = $1', [googleId]);
+    
+    if (existingUser.rows.length === 0) {
+      // User does not exist, create a new user
+      const username = generateUsername(email);
+
+      const newUser = await db.query(
+        'INSERT INTO users (firstname, lastname, email, profile_pic, google_id, username) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [firstName, lastName, email, profilePic, googleId, username]
+      );
+
+      const user = newUser.rows[0];
+      
+      // Create a JWT token with the user's info
+      // const token = jwt.sign(
+      //   { id: user.id, username: user.username, email: user.email },
+      //   jwtSecret, // Replace with your secret key
+      //   { expiresIn: '1d' }
+      // );
+
+      const payload={id:user.id,username : user.username, email:user.email};
+      console.log(payload);
+      const token=jwt.sign(payload, jwtSecret, {expiresIn:'1d'});
+      await updateTokenById(user.id, token);
+      return res.json({success:true , token:token,user:{id:user.id,username:user.username , email:user.email}});
+
+
+    } else {
+      // User already exists, generate JWT token
+      const user = existingUser.rows[0];
+      
+      const payload={id:user.id,username : user.username, email:user.email};
+      console.log(payload);
+      const token=jwt.sign(payload, jwtSecret, {expiresIn:'1d'});
+      await updateTokenById(user.id, token);
+            return res.json({success:true , token:token,user:{id:user.id,username:user.username , email:user.email}});
+
+
+    }
+
+
+  } catch (error) {
+    console.error('Error verifying Google token:', error);
+    return res.status(400).json({ message: 'Invalid Google credential' });
+  }
+});
+
+
+
+
+
 
 
 
@@ -1496,7 +1580,6 @@ app.delete('/:userId/delete-post/:postId', async (req, res) => {
   try {
     await db.query('BEGIN');
 
-    // Step 1: Check if the post exists and belongs to the user
     const deleteResult = await db.query(
       'DELETE FROM post WHERE id = $1 AND poster_id = $2 RETURNING id',
       [postId, userId]
@@ -1506,7 +1589,6 @@ app.delete('/:userId/delete-post/:postId', async (req, res) => {
       throw new Error('Post not found or unauthorized action');
     }
 
-    // Step 2: Delete all comments related to the post and their likes/dislikes
     await db.query(
       `DELETE FROM comment_likes WHERE comment_id IN (SELECT id FROM comments WHERE post_id = $1)`,
       [postId]
