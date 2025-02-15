@@ -8,7 +8,7 @@ import upload from "./config/cloudinary.mjs";
 import db from "./config/postgres.mjs";
 import checkToken from "./middlewares/checkToken.mjs";
 import { addPostToAlgolia , updatePostInAlgolia , deletePostFromAlgolia , addUserToAlgolia} from './config/algolia.mjs'; 
-import googleClient from "./config/goolgle-oauth.mjs"
+import admin from "./config/firebase-admin.mjs";
 
 
 
@@ -89,10 +89,20 @@ async function resetPassword(password,id)
 }
 
 const generateUsername = (email) => {
-  const username = email.split('@')[0]; 
-  return username + '';  
-};
+  const base = email.split('@')[0]; 
+  let shortTimestamp = Date.now().toString().slice(-5).split("");
 
+  let indexes = new Set();
+  while (indexes.size < 2) {
+    indexes.add(Math.floor(Math.random() * 5));
+  }
+
+  indexes.forEach(index => {
+    shortTimestamp[index] = ''; 
+  });
+
+  return `${base}_${shortTimestamp.filter(digit => digit !== '').join("")}`;
+};
 
 
 
@@ -182,6 +192,7 @@ app.post('/login',async (req, res)=>
   {const {email, password}= req.body;
   console.log(email, password);
   const user_arr= await getUserByEmail(email);
+  console.log(user_arr)
   if(user_arr.length===0)
   {
     res.json({error:'Wrong Email or Password'})
@@ -247,6 +258,8 @@ app.post('/username-used',async (req, res)=>
   }
 })
 
+
+
 app.post('/reset/password/:id' ,async (req, res)=>
 {
   try
@@ -274,78 +287,69 @@ app.post('/reset/password/:id' ,async (req, res)=>
 
 
 //oauth
+app.post('/auth/google', async (req, res) => {
+  const { idToken } = req.body;
 
-// Function to handle Google login
-app.post('/google-login', async (req, res) => {
-  const { credential } = req.body;
-  console.log(credential)
-  if (!credential) {
-    return res.status(400).json({ message: 'No credential provided' });
+  if (!idToken) {
+    return res.status(400).json({ error: "ID token is required" });
   }
 
   try {
-    // Verify and decode the Google ID token
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID
-    });
+    await db.query("BEGIN"); 
 
-    const payload = ticket.getPayload();
-    const googleId = payload.sub; // Google ID (unique identifier)
-    const email = payload.email;
-    const firstName = payload.given_name;
-    const lastName = payload.family_name;
-    const profilePic = payload.picture;
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    console.log(decodedToken);
+    const { uid, email, name } = decodedToken;
+    const [firstName, lastName] = name ? name.split(' ') : ['', ''];
 
-    // Check if the user exists in the database using the Google ID
-    const existingUser = await db.query('SELECT * FROM users WHERE google_id = $1', [googleId]);
-    
+    console.log({ uid, email, firstName, lastName });
+
+    let existingUser = await db.query('SELECT * FROM users WHERE google_id = $1', [uid]);
+
     if (existingUser.rows.length === 0) {
-      // User does not exist, create a new user
-      const username = generateUsername(email);
+      const existingEmailUser = await db.query('SELECT * FROM users WHERE email = $1', [email]);
 
-      const newUser = await db.query(
-        'INSERT INTO users (firstname, lastname, email, profile_pic, google_id, username) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-        [firstName, lastName, email, profilePic, googleId, username]
-      );
+      if (existingEmailUser.rows.length > 0) {
+        await db.query('UPDATE users SET google_id = $1 WHERE email = $2', [uid, email]);
+        existingUser = existingEmailUser;
+        console.log("Google ID mis à jour pour l'utilisateur existant :", email);
+      } else {
+        const username = generateUsername(email); 
 
-      const user = newUser.rows[0];
-      
-      // Create a JWT token with the user's info
-      // const token = jwt.sign(
-      //   { id: user.id, username: user.username, email: user.email },
-      //   jwtSecret, // Replace with your secret key
-      //   { expiresIn: '1d' }
-      // );
-
-      const payload={id:user.id,username : user.username, email:user.email};
-      console.log(payload);
-      const token=jwt.sign(payload, jwtSecret, {expiresIn:'1d'});
-      await updateTokenById(user.id, token);
-      return res.json({success:true , token:token,user:{id:user.id,username:user.username , email:user.email}});
-
-
-    } else {
-      // User already exists, generate JWT token
-      const user = existingUser.rows[0];
-      
-      const payload={id:user.id,username : user.username, email:user.email};
-      console.log(payload);
-      const token=jwt.sign(payload, jwtSecret, {expiresIn:'1d'});
-      await updateTokenById(user.id, token);
-            return res.json({success:true , token:token,user:{id:user.id,username:user.username , email:user.email}});
-
-
+        const newUser = await db.query(
+          'INSERT INTO users (google_id, email, username, firstname, lastname) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+          [uid, email, username, firstName, lastName]
+        );
+        
+        existingUser = newUser;
+        await addUserToAlgolia(existingUser.rows[0]); 
+        console.log("Nouvel utilisateur créé avec Google :", email);
+      }
     }
 
+    const user = existingUser.rows[0];
+
+    await db.query("COMMIT");
+
+    const payload = { id: user.id, username: user.username, email: user.email };
+    const token = jwt.sign(payload, jwtSecret, { expiresIn: '1d' });
+
+    return res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+      }
+    });
 
   } catch (error) {
-    console.error('Error verifying Google token:', error);
-    return res.status(400).json({ message: 'Invalid Google credential' });
-  }
+    await db.query("ROLLBACK"); 
+    console.error("error while auth with google", error);
+    return res.status(500).json({ error: "internal server error" });
+  } 
 });
-
-
 
 
 

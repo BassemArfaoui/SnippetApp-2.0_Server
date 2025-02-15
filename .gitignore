@@ -1,7 +1,9 @@
 .hintrc
 
-/config/firebaseAdmin.json
+.env
 
+/config/firebaseAdmin.json
+sync_posts.mjs
 # Logs
 logs
 *.log
