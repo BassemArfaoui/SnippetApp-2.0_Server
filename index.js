@@ -9,6 +9,7 @@ import db from "./config/postgres.mjs";
 import checkToken from "./middlewares/checkToken.mjs";
 import { addPostToAlgolia , updatePostInAlgolia , deletePostFromAlgolia , addUserToAlgolia} from './config/algolia.mjs'; 
 import admin from "./config/firebase-admin.mjs";
+import  authMiddleware from './middlewares/authMiddleware.js'
 
 
 
@@ -240,6 +241,17 @@ app.get('/check/token',checkToken,(req,res)=>{
 })
 
 
+app.get('/check-token',authMiddleware,(req,res)=>{
+  try {
+    res.status(200).json({ valid: true });
+  } catch (err) {
+    console.error('error validating token')
+    res.json({ valid: false });
+  }
+})
+
+
+
 
 app.post('/username-used',async (req, res)=>
 {
@@ -372,8 +384,8 @@ app.post("/:userId/upload", upload.single("profilePic"), async (req, res) => {
 
 
 //services
-app.get('/:userId/posts', async (req, res) => {
-  const { userId } = req.params;
+app.get('/posts', authMiddleware , async (req, res) => {
+  const { userId } = req.user.id;
   const limit = parseInt(req.query.limit) || 10;
 
   try {
@@ -416,8 +428,8 @@ app.get('/:userId/posts', async (req, res) => {
 });
 
 
-app.get('/notifications/:id', async (req, res) => {
-  const userId = req.params.id;
+app.get('/notifications',authMiddleware , async (req, res) => {
+  const userId = req.user.id;
   const limit = parseInt(req.query.limit) || 10; 
   const offset = parseInt(req.query.offset) || 0; 
 
@@ -444,8 +456,8 @@ app.get('/notifications/:id', async (req, res) => {
 });
 
 
-app.get('/like/:userId/:postId', async (req, res) => {
-  const userId = req.params.userId;
+app.get('/like/:postId', authMiddleware ,async (req, res) => {
+  const userId = req.user.id;
   const postId = req.params.postId;
 
   try {
@@ -480,8 +492,9 @@ app.get('/like/:userId/:postId', async (req, res) => {
 
 
 
-app.get('/unlike/:userId/:postId', async (req, res) => {
-  const { userId, postId } = req.params;
+app.get('/unlike/:postId', authMiddleware , async (req, res) => {
+  const userId = req.user.id ;
+  const { postId } = req.params;
 
   try {
     await db.query('BEGIN'); 
@@ -512,8 +525,10 @@ app.get('/unlike/:userId/:postId', async (req, res) => {
 
 
 
-app.get('/dislike/:userId/:postId', async (req, res) => {
-  const { userId, postId } = req.params;
+
+app.get('/dislike/:postId', authMiddleware ,async (req, res) => {
+  const userId = req.user.id ;
+  const {  postId } = req.params;
 
   try {
     await db.query('BEGIN'); 
@@ -546,8 +561,9 @@ app.get('/dislike/:userId/:postId', async (req, res) => {
 });
 
 
-app.get('/undislike/:userId/:postId', async (req, res) => {
-  const { userId, postId } = req.params;
+app.get('/undislike/:postId', authMiddleware ,async (req, res) => {
+  const  userId = req.user.id ;
+  const { postId } = req.params;
 
   try {
     await db.query('BEGIN');
@@ -576,8 +592,9 @@ app.get('/undislike/:userId/:postId', async (req, res) => {
 });
 
 
-app.get('/save/:userId/:postId', async (req, res) => {
-  const { userId, postId } = req.params;
+app.get('/save/:postId', authMiddleware ,async (req, res) => {
+  const  userId = req.user.id ;
+  const { postId } = req.params;
   let collection;
 
   if(req.query.collection && req.query.collection.trim())
@@ -600,8 +617,9 @@ app.get('/save/:userId/:postId', async (req, res) => {
 });
 
 
-app.get('/unsave/:userId/:postId', async (req, res) => {
-  const { userId, postId } = req.params;
+app.get('/unsave/:postId', authMiddleware ,async (req, res) => {
+  const userId = req.user.id ;
+  const { postId } = req.params;
 
   try {
     await db.query('DELETE FROM saves WHERE user_id = $1 AND post_id = $2', [userId, postId]);
@@ -614,8 +632,9 @@ app.get('/unsave/:userId/:postId', async (req, res) => {
 });
 
 
-app.get('/interested/:interestedId/:interestingId', async (req, res) => {
-  const { interestedId, interestingId } = req.params;
+app.get('/sub/:sub_to', authMiddleware ,async (req, res) => {
+  const userId = req.user.id ;
+  const { sub_to } = req.params;
 
   try {
     await db.query(
@@ -630,7 +649,7 @@ app.get('/interested/:interestedId/:interestingId', async (req, res) => {
       SET subs_count = subs_count + 1
       WHERE id = $2 AND EXISTS (SELECT 1 FROM inserted);
       `,
-      [interestedId, interestingId]
+      [userId, sub_to ]
     );
 
     res.status(200).json({ success: true });
@@ -641,8 +660,9 @@ app.get('/interested/:interestedId/:interestingId', async (req, res) => {
 });
 
 
-app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
-  const { interestedId, interestingId } = req.params;
+app.get('/unsub/:unsub_to', authMiddleware ,async (req, res) => {
+  const userId= req.user.id
+  const { unsub_to } = req.params;
 
   try {
     const result = await db.query(
@@ -656,7 +676,7 @@ app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
       SET subs_count = subs_count - 1
       WHERE id = $2 AND EXISTS (SELECT 1 FROM deleted);
       `,
-      [interestedId, interestingId]
+      [userId, unsub_to]
     );
 
     if (result.rowCount > 0) {
@@ -671,8 +691,9 @@ app.get('/uninterested/:interestedId/:interestingId', async (req, res) => {
 });
 
 
-app.get('/:postId/:userId/comments', async (req, res) => {
-  const { postId, userId } = req.params;
+app.get('/:postId/comments', authMiddleware ,async (req, res) => {
+  const userId = req.user.id ;
+  const { postId} = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 20;
   const offset = (page - 1) * limit;
@@ -714,76 +735,91 @@ app.get('/:postId/:userId/comments', async (req, res) => {
 });
 
 
-app.get('/likeComment/:userId/:commentId', async (req, res) => {
-  const userId = req.params.userId;
+app.get('/likeComment/:commentId', authMiddleware,async (req, res) => {
+  const userId = req.user.id;
   const commentId = req.params.commentId;
 
   try {
+    await db.query('BEGIN')
     await db.query('INSERT INTO comment_likes (comment_id, user_id) VALUES ($1, $2) ON CONFLICT (comment_id, user_id) DO NOTHING', [commentId, userId]);
-
     await db.query('UPDATE comments SET like_count = like_count + 1 WHERE id = $1', [commentId]);
-
+    await db.query('COMMIT')
     res.status(200).json({ success: true });
   } catch (err) {
+    await db.query('ROLLBACK')
     console.error(err);
     res.status(500).json({ success: false });
   }
 });
 
 
-app.get('/unlikeComment/:userId/:commentId', async (req, res) => {
-  const { userId, commentId } = req.params;
+app.get('/unlikeComment/:commentId', authMiddleware,async (req, res) => {
+  const userId = req.user.id ;
+  const { commentId } = req.params;
 
   try {
+
+    await db.query('BEGIN')
     await db.query('DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2', [commentId, userId]);
 
     await db.query('UPDATE comments SET like_count = like_count - 1 WHERE id = $1', [commentId]);
+    await db.query('COMMIT')
 
     res.status(200).json({ success: true });
   } catch (err) {
+    await db.query('ROLLBACK')
     console.error(err);
     res.status(500).json({ success: false });
   }
 });
 
 
-app.get('/dislikeComment/:userId/:commentId', async (req, res) => {
-  const { userId, commentId } = req.params;
+app.get('/dislikeComment/:commentId', authMiddleware , async (req, res) => {
+  const userId = req.user.id ; 
+  const { commentId } = req.params;
 
 
   try {
+
+    await db.query('BEGIN')
     await db.query('INSERT INTO comment_dislikes (comment_id, user_id) VALUES ($1, $2) ON CONFLICT (comment_id, user_id) DO NOTHING', [commentId, userId]);
 
     await db.query('UPDATE comments SET dislike_count = dislike_count + 1 WHERE id = $1', [commentId]);
+    await db.query('COMMIT')
 
     res.status(200).json({ success: true });
   } catch (err) {
+    await db.query('ROLLBACK')
     console.error(err);
     res.status(500).json({ success: false });
   }
 });
 
 
-app.get('/undislikeComment/:userId/:commentId', async (req, res) => {
-  const { userId, commentId } = req.params;
+app.get('/undislikeComment/:commentId', authMiddleware ,async (req, res) => {
+  const userId = req.user.id ;
+  const { commentId } = req.params;
 
   try {
+    await db.query('BEGIN')
     await db.query('DELETE FROM comment_dislikes WHERE comment_id = $1 AND user_id = $2', [commentId, userId]);
-
     await db.query('UPDATE comments SET dislike_count = dislike_count - 1 WHERE id = $1', [commentId]);
-
+    await db.query('commit')
     res.status(200).json({ success: true });
   } catch (err) {
+
+    await db.query('rollback')
     console.error(err);
     res.status(500).json({ success: false });
+
   }
 });
 
 
-app.get('/comments/:commentId/replies', async (req, res) => {
+app.get('/comments/:commentId/replies', authMiddleware , async (req, res) => {
   const commentId = req.params.commentId;
-  const limit = parseInt(req.query.limit) || 2;  
-  const offset = parseInt(req.query.offset) || 0; 
+  const limit = parseInt(req.query.limit) || 3;  
+  const offset = parseInt(req.query.offset) || 0;
 
   try {
 
@@ -833,7 +869,7 @@ app.get('/comments/:commentId/replies', async (req, res) => {
 });
 
 
-app.get('/comments/:commentId/repliesCount', async (req, res) => {
+app.get('/comments/:commentId/repliesCount', authMiddleware,async (req, res) => {
   const commentId = req.params.commentId;
 
   try {
@@ -854,7 +890,7 @@ app.get('/comments/:commentId/repliesCount', async (req, res) => {
 });
 
 
-app.post('/add/comment', async (req, res) => {
+app.post('/add-comment', authMiddleware ,async (req, res) => {
   const { userId, postId, content, isReply, replyToId } = req.body;
 
   if (!userId || !postId || !content) {
@@ -894,8 +930,9 @@ app.post('/add/comment', async (req, res) => {
 });
 
 
-app.delete('/:userId/delete-comment/:commentId', async (req, res) => {
-  const { userId, commentId } = req.params;
+app.delete('/delete-comment/:commentId', authMiddleware ,async (req, res) => {
+  const userId= req.user.id
+  const {  commentId } = req.params;
 
   try {
     if (!userId || !commentId) {
@@ -954,8 +991,9 @@ app.delete('/:userId/delete-comment/:commentId', async (req, res) => {
 });
 
 
-app.delete('/:userId/delete-reply/:commentId', async (req, res) => {
-  const { userId, commentId } = req.params;
+app.delete('/delete-reply/:commentId', authMiddleware , async (req, res) => {
+  const userId = req.user.id
+  const { commentId } = req.params;
 
   try {
     if (!userId || !commentId) {
@@ -1007,8 +1045,9 @@ app.delete('/:userId/delete-reply/:commentId', async (req, res) => {
 });
 
 
-app.put('/:userId/edit-comment/:commentId', async (req, res) => {
-  const {userId , commentId} = req.params ;
+app.put('/edit-comment/:commentId', authMiddleware ,async (req, res) => {
+  const userId = req.user.id ;
+  const {commentId} = req.params ;
   const { content } = req.body;
 
   if (!userId || !commentId || !content) {
@@ -1061,8 +1100,8 @@ app.get('/post/:id', async (req, res) => {
 });
 
 
-app.get('/:userId/saved-posts', async (req, res) => {
-  const { userId } = req.params;
+app.get('/saved-posts', authMiddleware ,async (req, res) => {
+  const  userId  = req.user.id;
   const limit = parseInt(req.query.limit) || 10; 
   const page = parseInt(req.query.page) || 1;    
   const offset = (page - 1) * limit;             
@@ -1111,8 +1150,8 @@ app.get('/:userId/saved-posts', async (req, res) => {
 });
 
 
-app.get('/:userId/search-saved-posts', async (req, res) => {
-  const { userId } = req.params;
+app.get('/search-saved-posts', authMiddleware ,async (req, res) => {
+  const userId  = req.user.id;
   const limit = parseInt(req.query.limit) || 10; 
   const page = parseInt(req.query.page) || 1;    
   const keyword = req.query.keyword || '';       
@@ -1163,8 +1202,8 @@ app.get('/:userId/search-saved-posts', async (req, res) => {
 });
 
 
-app.get('/:userId/saved-posts/filter', async (req, res) => {
-  const { userId } = req.params;
+app.get('/saved-posts-filter', authMiddleware ,async (req, res) => {
+  const userId  = req.user.id;
   const { title, language, content, limit = 10, page = 1 } = req.query;
 
   const offset = (page - 1) * limit;
@@ -1237,8 +1276,8 @@ app.get('/:userId/saved-posts/filter', async (req, res) => {
 });
 
 
-app.get('/:userId/collections', async (req, res) => {
-  const { userId } = req.params;
+app.get('/collections', authMiddleware ,async (req, res) => {
+  const userId  = req.user.id;
 
   try {
     const result = await db.query(
@@ -1266,8 +1305,9 @@ app.get('/:userId/collections', async (req, res) => {
 });
 
 
-app.get('/:userId/collection/posts/:collectionName', async (req, res) => {
-  const { userId, collectionName } = req.params;
+app.get('/collection/posts/:collectionName',authMiddleware , async (req, res) => {
+  const userId= req.user.id ;
+  const {  collectionName } = req.params;
   const limit = parseInt(req.query.limit) || 10;
   const page = parseInt(req.query.page) || 1;
   const offset = (page - 1) * limit;
@@ -1317,9 +1357,9 @@ app.get('/:userId/collection/posts/:collectionName', async (req, res) => {
 });
 
 
-app.get('/:userId/snippets', async (req, res) => {
+app.get('/snippets', authMiddleware ,async (req, res) => {
   try {
-    const userId=req.params.userId;
+    const userId=req.user.id;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     
@@ -1349,10 +1389,10 @@ app.get('/:userId/snippets', async (req, res) => {
 });
 
 
-app.delete('/:userId/delete/snippet/:snippetId',async (req,res)=>
+app.delete('/delete-snippet/:snippetId',authMiddleware ,async (req,res)=>
 {
   const snippetId=req.params.snippetId;
-  const userId=req.params.userId;
+  const userId=req.user.id;
 
   try{
     await db.query('DELETE FROM snippet WHERE id=$1 AND user_id=$2',[snippetId,userId]);
@@ -1367,9 +1407,9 @@ app.delete('/:userId/delete/snippet/:snippetId',async (req,res)=>
 })
 
 
-app.put('/:userId/edit/snippet/:snippetId', async (req, res) => {
+app.put('/edit-snippet/:snippetId', authMiddleware ,async (req, res) => {
   const snippetId = req.params.snippetId;
-  const userId = req.params.userId;
+  const userId = req.user.id;
   const { title, content, language } = req.body;
   
   try {
@@ -1389,8 +1429,8 @@ app.put('/:userId/edit/snippet/:snippetId', async (req, res) => {
 });
 
 
-app.post('/:userId/add/snippet', async (req, res) => {
-  const userId = req.params.userId;
+app.post('/add-snippet', authMiddleware ,async (req, res) => {
+  const userId = req.user.id;
   const { title, content, language } = req.body;
 
   try {
@@ -1411,8 +1451,8 @@ app.post('/:userId/add/snippet', async (req, res) => {
 });
 
 
-app.post('/:userId/add/post/:snippetId', async (req, res) => {
-  const userId = req.params.userId;
+app.post('/add-post/:snippetId', authMiddleware ,async (req, res) => {
+  const userId = req.user.id;
   const snippetId = req.params.snippetId;
   const { title, content, language, description, gitHubLink } = req.body;
 
@@ -1449,8 +1489,8 @@ app.post('/:userId/add/post/:snippetId', async (req, res) => {
 });
 
 
-app.post('/:userId/add-post/', async (req, res) => {
-  const userId = req.params.userId;
+app.post('/add-post/',authMiddleware, async (req, res) => {
+  const userId = req.user.id;
   const { title, content, language, description, gitHubLink } = req.body;
 
   try {
@@ -1536,8 +1576,8 @@ app.get('/sync-users', async (req, res) => {
 
 
 
-app.put('/:userId/edit-post/:postId', async (req, res) => {
-  const userId = req.params.userId;
+app.put('/edit-post/:postId', authMiddleware ,async (req, res) => {
+  const userId = req.user.id;
   const postId = req.params.postId;
   const { title, content, language, description, gitHubLink } = req.body;
 
@@ -1577,9 +1617,9 @@ app.put('/:userId/edit-post/:postId', async (req, res) => {
 });
 
 
-app.delete('/:userId/delete-post/:postId', async (req, res) => {
+app.delete('/delete-post/:postId', authMiddleware ,async (req, res) => {
   const postId = req.params.postId;
-  const userId = req.params.userId;
+  const userId = req.user.id;
 
   try {
     await db.query('BEGIN');
@@ -1641,9 +1681,9 @@ app.delete('/:userId/delete-post/:postId', async (req, res) => {
 });
 
 
-app.get("/profile/:username", async (req, res) => {
+app.get("/profile/:username",authMiddleware,async (req, res) => {
         const username = req.params.username;
-    const uid = req.query.uid;
+        const uid = req.user.id;
   
     if (!uid) {
       return res.status(400).json({ message: "User ID (uid) is required as a query parameter" });
@@ -1683,9 +1723,9 @@ app.get("/profile/:username", async (req, res) => {
   });
   
 
-app.get('/published/posts/:username/', async (req, res) => {
+app.get('/published-posts/:username/',authMiddleware , async (req, res) => {
     const { username } = req.params;
-    const uid = parseInt(req.query.uid); 
+    const uid = parseInt(req.user.id); 
     const page = parseInt(req.query.page) || 1; 
     const limit = parseInt(req.query.limit) || 10;  
     const offset = (page - 1) * limit; 
@@ -1758,7 +1798,17 @@ app.get('/published/posts/:username/', async (req, res) => {
   
 
 
-
+app.get('/test', authMiddleware , async (req,res)=>
+{
+  try{
+    const user = req.user 
+    console.log(user)
+    res.status(200).json(user) ;
+  } catch(err)
+  {
+    console.error(err.message)
+  }
+} )
 
 
 
