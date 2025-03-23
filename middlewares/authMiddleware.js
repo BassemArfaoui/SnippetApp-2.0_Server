@@ -5,6 +5,8 @@ const JWT_SECRET = process.env.JWT_SECRET
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
+  console.log('authHeader', authHeader)
+
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     console.error('Unauthorized: No token provided')
@@ -15,6 +17,7 @@ const authMiddleware = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    console.log('decoded', decoded)
     req.user = decoded; 
     next();
   } catch (error) {

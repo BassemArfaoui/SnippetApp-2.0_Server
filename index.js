@@ -385,7 +385,8 @@ app.post("/:userId/upload", upload.single("profilePic"), async (req, res) => {
 
 //services
 app.get('/posts', authMiddleware , async (req, res) => {
-  const { userId } = req.user.id;
+  const  userId  =req.user.id;
+  console.log(userId);
   const limit = parseInt(req.query.limit) || 10;
 
   try {
